@@ -4,7 +4,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Purpose
 
-This repository contains solutions to Kaggle competition problems, developed as part of an advanced ML course for BBVA. Work is organized around individual competition problems, typically as Jupyter notebooks.
+This repository contains the solution for a Kaggle competition developed as part of an advanced ML course for BBVA.
+
+**Problem**: Binary classification — predict whether a bank client will contract a product offered in a marketing campaign.  
+**Competition**: `aprendizaje-automatico-avanzado-febrero-2026`  
+
+### Target & metric
+- Metric: **Accuracy**
+- Target values: `0` (client does not contract) / `1` (client contracts)
+
+### Submission format
+Two-column CSV: observation index + prediction.
+
+```
+id,target
+0,1
+1,0
+...
+```
+
+Work is organized in class groups and delivered primarily as Jupyter notebooks.
 
 ## Stack
 
