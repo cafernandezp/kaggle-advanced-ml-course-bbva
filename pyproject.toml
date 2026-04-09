@@ -5,10 +5,12 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "click>=8.3.2",
     "ipykernel>=7.2.0",
     "kaggle>=2.0.0",
     "lightgbm>=4.6.0",
     "matplotlib>=3.10.8",
+    "mlflow>=1.27.0",
     "numpy>=2.4.4",
     "optuna>=4.8.0",
     "pandas>=3.0.2",
@@ -16,4 +18,9 @@ dependencies = [
     "seaborn>=0.13.2",
     "torch>=2.11.0",
     "xgboost>=3.2.0",
+]
+
+[dependency-groups]
+dev = [
+    "pylint>=4.0.5",
 ]

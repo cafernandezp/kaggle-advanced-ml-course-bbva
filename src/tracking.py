@@ -12,6 +12,8 @@ Reports:
     tracker.generate_report()  →  reports/runs/comparison.csv + comparison.png
 """
 import json
+import logging
+import pickle
 import shutil
 from contextlib import contextmanager
 from datetime import datetime
@@ -20,11 +22,15 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import pandas as pd
 
+logger = logging.getLogger(__name__)
+
 ROOT = Path(__file__).parent.parent
 RUNS_DIR = ROOT / "reports/runs"
 
 
 class ExperimentTracker:
+    """Lightweight JSON-based tracker for ML experiments."""
+
     def __init__(self, experiment_name: str):
         self.experiment_name = experiment_name
         self._run_dir: Path | None = None
@@ -46,23 +52,27 @@ class ExperimentTracker:
             "metrics": {},
         }
 
-        print(f"[tracker] run started → {self._run_dir.name}")
+        logger.info("run started → %s", self._run_dir.name)
         try:
             yield self
         finally:
             self._save()
-            print(f"[tracker] run saved   → {self._run_dir.name}")
+            logger.info("run saved   → %s", self._run_dir.name)
 
     def log_params(self, params: dict) -> None:
+        """Bulk-update the run's parameter dict."""
         self._data["params"].update(params)
 
     def log_param(self, key: str, value) -> None:
+        """Log a single hyperparameter."""
         self._data["params"][key] = value
 
     def log_metrics(self, metrics: dict) -> None:
+        """Bulk-update the run's metrics dict."""
         self._data["metrics"].update(metrics)
 
     def log_metric(self, key: str, value: float) -> None:
+        """Log a single metric value."""
         self._data["metrics"][key] = value
 
     def log_artifact(self, src_path: str | Path) -> None:
@@ -71,6 +81,33 @@ class ExperimentTracker:
             raise RuntimeError("No active run — use start_run() context manager.")
         dst = self._run_dir / Path(src_path).name
         shutil.copy2(src_path, dst)
+
+    def log_dataframe(self, df: pd.DataFrame, filename: str) -> None:
+        """Save a DataFrame as CSV directly into the run directory."""
+        if self._run_dir is None:
+            raise RuntimeError("No active run — use start_run() context manager.")
+        df.to_csv(self._run_dir / filename, index=False)
+
+    def log_study(self, study) -> None:
+        """Save Optuna study: trials as CSV and full study object as pkl."""
+        if self._run_dir is None:
+            raise RuntimeError("No active run — use start_run() context manager.")
+        trials_path = self._run_dir / "optuna_trials.csv"
+        study.trials_dataframe().to_csv(trials_path, index=False)
+        pkl_path = self._run_dir / "optuna_study.pkl"
+        with open(pkl_path, "wb") as fh:
+            pickle.dump(study, fh)
+        logger.info("Optuna trials  → %s", trials_path.name)
+        logger.info("Optuna study   → %s", pkl_path.name)
+
+    def log_model(self, model, filename: str = "model.pkl") -> None:
+        """Pickle a trained model into the run directory."""
+        if self._run_dir is None:
+            raise RuntimeError("No active run — use start_run() context manager.")
+        path = self._run_dir / filename
+        with open(path, "wb") as fh:
+            pickle.dump(model, fh)
+        logger.info("Model saved → %s", path.name)
 
     def _save(self) -> None:
         out = self._run_dir / "run.json"
@@ -96,23 +133,22 @@ class ExperimentTracker:
         """Save a comparison CSV and accuracy bar chart across all runs."""
         df = self.load_all_runs()
         if df.empty:
-            print("[tracker] No runs found.")
+            logger.info("No runs found.")
             return
 
         RUNS_DIR.mkdir(parents=True, exist_ok=True)
         csv_path = RUNS_DIR / "comparison.csv"
         df.to_csv(csv_path, index=False)
-        print(f"[tracker] Comparison table → {csv_path}")
+        logger.info("Comparison table → %s", csv_path)
 
         # Accuracy & overfit chart
-        metric_cols = [c for c in df.columns if not c.startswith("param_")]
         plot_cols = [c for c in ["val_accuracy", "train_accuracy", "overfit_gap"] if c in df.columns]
         if not plot_cols:
             return
 
         labels = df["run_name"] + "\n" + df["timestamp"]
         x = range(len(df))
-        fig, axes = plt.subplots(1, len(plot_cols), figsize=(5 * len(plot_cols), 4))
+        _, axes = plt.subplots(1, len(plot_cols), figsize=(5 * len(plot_cols), 4))
         if len(plot_cols) == 1:
             axes = [axes]
 
@@ -130,7 +166,7 @@ class ExperimentTracker:
         png_path = RUNS_DIR / "comparison.png"
         plt.savefig(png_path, dpi=130)
         plt.close()
-        print(f"[tracker] Comparison chart → {png_path}")
+        logger.info("Comparison chart → %s", png_path)
 
         # Feature importance chart across runs
         imp_files = list(RUNS_DIR.glob("*/feature_importance.csv"))
@@ -142,13 +178,14 @@ class ExperimentTracker:
                 tmp.columns = ["feature", run_name]
                 frames.append(tmp.set_index("feature"))
             imp_df = pd.concat(frames, axis=1).fillna(0)
-            fig, ax = plt.subplots(figsize=(10, max(4, len(imp_df) * 0.4)))
+            _, ax = plt.subplots(figsize=(10, max(4, len(imp_df) * 0.4)))
             imp_df.plot(kind="barh", ax=ax)
             ax.invert_yaxis()
             ax.set_title("Feature importance across runs")
             plt.tight_layout()
             plt.savefig(RUNS_DIR / "feature_importance_comparison.png", dpi=130)
             plt.close()
-            print(f"[tracker] Feature importance comparison → {RUNS_DIR / 'feature_importance_comparison.png'}")
+            cmp_path = RUNS_DIR / "feature_importance_comparison.png"
+            logger.info("Feature importance comparison → %s", cmp_path)
 
-        print(df[["run_name", "timestamp"] + plot_cols].to_string(index=False))
+        logger.info("\n%s", df[["run_name", "timestamp"] + plot_cols].to_string(index=False))

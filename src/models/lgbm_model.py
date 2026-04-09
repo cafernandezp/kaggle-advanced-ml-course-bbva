@@ -11,6 +11,7 @@ EARLY_STOPPING = 50
 
 
 def get_lgbm_params(trial: optuna.Trial) -> dict:
+    """Return Optuna-suggested LightGBM hyperparameters merged with fixed params."""
     return {
         "n_estimators":      trial.suggest_int(   "n_estimators",      100,  2000, step=50),
         "learning_rate":     trial.suggest_float(  "learning_rate",     1e-3, 0.3,  log=True),
@@ -30,6 +31,7 @@ def get_lgbm_params(trial: optuna.Trial) -> dict:
 
 
 def objective(trial, X_train, y_train, X_val, y_val) -> float:
+    """Optuna objective: combined val_auc − penalty * overfit_gap."""
     params = get_lgbm_params(trial)
     model = lgb.LGBMClassifier(**params)
     model.fit(

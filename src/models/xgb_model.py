@@ -11,6 +11,7 @@ EARLY_STOPPING = 50
 
 
 def get_xgb_params(trial: optuna.Trial) -> dict:
+    """Return Optuna-suggested XGBoost hyperparameters merged with fixed params."""
     return {
         "n_estimators":     trial.suggest_int(   "n_estimators",    100,  2000, step=50),
         "max_depth":        trial.suggest_int(   "max_depth",          3,    10, step=1),
@@ -29,6 +30,7 @@ def get_xgb_params(trial: optuna.Trial) -> dict:
 
 
 def objective(trial, X_train, y_train, X_val, y_val) -> float:
+    """Optuna objective: combined val_auc − penalty * overfit_gap."""
     params = get_xgb_params(trial)
     model = xgb.XGBClassifier(**params, early_stopping_rounds=EARLY_STOPPING, verbosity=0)
     model.fit(

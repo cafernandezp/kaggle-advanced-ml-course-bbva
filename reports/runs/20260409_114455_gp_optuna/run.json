@@ -1,0 +1,31 @@
+{
+  "experiment": "banking-marketing-classification",
+  "run_name": "gp_optuna",
+  "timestamp": "20260409_114455",
+  "params": {
+    "kernel_name": "rbf",
+    "n_train_samples": 2500,
+    "n_restarts": 2,
+    "max_iter_predict": 100,
+    "model": "GaussianProcess",
+    "n_trials": 30
+  },
+  "metrics": {
+    "val_auc": 0.9322,
+    "train_auc": 0.9359,
+    "val_accuracy": 0.8706,
+    "train_accuracy": 0.8704,
+    "val_precision": 0.46,
+    "train_precision": 0.459,
+    "val_recall": 0.8615,
+    "train_recall": 0.8546,
+    "val_ks": 0.7535,
+    "train_ks": 0.7442,
+    "val_gini": 0.8643,
+    "train_gini": 0.8719,
+    "threshold": 0.15,
+    "youden_index": 0.7333,
+    "best_youden": 0.7509,
+    "overfit_gap_auc": 0.0037
+  }
+}

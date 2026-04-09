@@ -81,11 +81,16 @@ def load_test() -> pd.DataFrame:
 
 
 def build_features_numeric(df: pd.DataFrame) -> pd.DataFrame:
-    """Same as build_features() but one-hot encodes categoricals for neural networks.
-    Returns a fully float32 DataFrame with no category dtypes."""
+    """Same as build_features() but one-hot encodes categoricals and imputes NaN.
+
+    Returns a fully float32 DataFrame with no category dtypes and no missing values.
+    NaN sources (education=unknown → NaN, pdays=999 → NaN) are filled with column medians.
+    """
     df = build_features(df)
     df = pd.get_dummies(df, columns=CAT_COLS, drop_first=True)
-    return df.astype("float32")
+    df = df.astype("float32")
+    df = df.fillna(df.median())
+    return df
 
 
 def load_splits_numeric() -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
@@ -102,6 +107,25 @@ def load_test_numeric() -> pd.DataFrame:
     """Processed test set with numeric (one-hot) features for MLP."""
     raw = pd.read_csv(TEST_PATH, index_col="Id")
     return build_features_numeric(raw)
+
+
+def expand_features_for_mlp(selected_features: list[str], X_num: pd.DataFrame) -> list[str]:
+    """Map tree feature names to their corresponding columns in the one-hot numeric DataFrame.
+
+    Categorical features (in CAT_COLS) expand to all derived dummy columns;
+    numeric / ordinal features map 1:1.
+
+    Example: "job" → ["job_blue-collar", "job_entrepreneur", ...]
+             "duration" → ["duration"]
+    """
+    mlp_cols: list[str] = []
+    for feat in selected_features:
+        if feat in CAT_COLS:
+            matching = [c for c in X_num.columns if c.startswith(feat + "_")]
+            mlp_cols.extend(matching)
+        elif feat in X_num.columns:
+            mlp_cols.append(feat)
+    return mlp_cols
 
 
 if __name__ == "__main__":

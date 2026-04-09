@@ -1,0 +1,16 @@
+feature,importance_pct
+nr.employed,44.45
+duration,14.0
+pdays,6.92
+emp.var.rate,6.69
+contact,4.2
+poutcome,3.93
+month,3.89
+euribor3m,3.87
+default,2.44
+cons.price.idx,2.38
+previous,1.7
+day_of_week,1.55
+age,1.39
+education,1.31
+campaign,1.27
