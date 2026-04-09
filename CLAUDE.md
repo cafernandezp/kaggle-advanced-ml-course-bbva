@@ -25,13 +25,29 @@ id,target
 
 Work is organized in class groups and delivered primarily as Jupyter notebooks.
 
+## Dataset domain knowledge
+
+| Group | Variables |
+|---|---|
+| Client demographics | `age`, `job`, `marital`, `education` |
+| Financial status | `default` (credit in default), `housing` (housing loan), `loan` (personal loan) |
+| Last contact | `contact`, `month`, `day_of_week`, `duration` |
+| Campaign history | `campaign` (contacts this campaign), `pdays`, `previous`, `poutcome` |
+| Macro-economic indicators | `emp.var.rate`, `cons.price.idx`, `cons.conf.idx`, `euribor3m`, `nr.employed` |
+
+**Key modeling notes**:
+- `duration` is **leaky** — call duration is only known after the outcome. Kept because the competition test set includes it, but must be excluded in any real deployment.
+- `pdays = 999` means the client was never previously contacted. Encoded as `was_contacted = 0` + `pdays = NaN` in `src/preprocessing.py`.
+- `education` is **ordinal** (`illiterate=0` → `university.degree=6`, `unknown=NaN`) — encoded as integers in `src/preprocessing.py`.
+- The 5 macro-economic indicators are externally sourced and identical for all clients contacted in the same period — high multicollinearity expected.
+
 ## Stack
 
 - **Language**: Python
 - **Notebooks**: Jupyter (`.ipynb`), checkpoints excluded via `.gitignore`
-- **Experiment tracking**: MLflow (run dirs, DB, and artifacts are gitignored)
+- **Experiment tracking**: custom tracker in `src/tracking.py` — runs saved to `reports/runs/` as JSON
 - **Linting**: Ruff (`.ruff_cache/` is gitignored)
-- **Environment**: supports pyenv, uv, pixi, or venv — none locked in yet
+- **Environment**: uv (`pyproject.toml` + `uv.lock`)
 
 ## Common commands
 
@@ -43,9 +59,6 @@ ruff format .
 # Run a notebook as a script (if converted)
 jupyter nbconvert --to script notebook.ipynb
 python notebook.py
-
-# Start MLflow UI (if tracking experiments locally)
-mlflow ui
 ```
 
 ## Branching
