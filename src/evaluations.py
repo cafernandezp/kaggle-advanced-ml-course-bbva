@@ -151,11 +151,58 @@ def build_run_metrics(model_eval: pd.DataFrame, threshold_info: dict, threshold:
     }
 
 
+def _pivot_long_to_wide(long_df: pd.DataFrame) -> pd.DataFrame:
+    """Pivot a long evaluation DataFrame (1 row per model×split) into wide format
+    with one row per model: val metrics first, then train metrics, then test stats.
+
+    Column ordering: model, threshold, val_*, train_*, test_*.
+    All column names are lower_snake_case.
+    """
+    # Columns that are shared across splits (and we keep once per model)
+    shared_cols = ["model", "threshold"]
+    # Metric columns (those that make sense for labelled splits — val/train)
+    labelled_metrics = [
+        "roc_auc", "gini", "ks_statistic", "pr_auc",
+        "accuracy", "precision", "recall", "f1",
+    ]
+    # Test-only columns (no labels → only prediction stats are meaningful)
+    test_only = ["n_samples", "n_positive", "positive_rate"]
+
+    rows: list[dict] = []
+    for model in long_df["model"].unique():
+        model_df = long_df[long_df["model"] == model]
+        val   = model_df[model_df["split"] == "val"].iloc[0]
+        train = model_df[model_df["split"] == "train"].iloc[0]
+        test  = model_df[model_df["split"] == "test"].iloc[0]
+
+        row: dict = {c: val[c] for c in shared_cols}
+        # val metrics first
+        for m in labelled_metrics:
+            row[f"val_{m}"] = val[m]
+        row["val_n_samples"]    = val["n_samples"]
+        row["val_n_positive"]   = val["n_positive"]
+        row["val_positive_rate"] = val["positive_rate"]
+        # train metrics next
+        for m in labelled_metrics:
+            row[f"train_{m}"] = train[m]
+        row["train_n_samples"]    = train["n_samples"]
+        row["train_n_positive"]   = train["n_positive"]
+        row["train_positive_rate"] = train["positive_rate"]
+        # test prediction stats last (no labelled metrics)
+        for c in test_only:
+            row[f"test_{c}"] = test[c]
+
+        rows.append(row)
+
+    return pd.DataFrame(rows)
+
+
 def merge_evaluation_summary(runs_dir: Path = RUNS_DIR) -> pd.DataFrame:
     """Merge all per-model evaluation_results.csv into a single evaluation_summary.csv.
 
     Scans reports/runs/*/evaluation_results.csv, keeps the latest run per model
-    (by folder timestamp), and writes the merged result.
+    (by folder timestamp), and writes a wide-format summary (one row per model)
+    with val metrics, then train metrics, then test prediction stats.
 
     Standalone: make eval-summary
     """
@@ -170,25 +217,28 @@ def merge_evaluation_summary(runs_dir: Path = RUNS_DIR) -> pd.DataFrame:
         df["run_folder"] = f.parent.name
         frames.append(df)
 
-    merged = pd.concat(frames, ignore_index=True)
+    long_merged = pd.concat(frames, ignore_index=True)
 
     # Keep only the latest run per model (last folder alphabetically = latest timestamp)
-    merged = merged.sort_values("run_folder")
-    merged = merged.drop_duplicates(subset=["model", "split"], keep="last")
-    merged = merged.drop(columns=["run_folder"])
+    long_merged = long_merged.sort_values("run_folder")
+    long_merged = long_merged.drop_duplicates(subset=["model", "split"], keep="last")
+    long_merged = long_merged.drop(columns=["run_folder"])
+
+    # Pivot to wide format: one row per model, val→train→test column order
+    wide = _pivot_long_to_wide(long_merged).sort_values("model").reset_index(drop=True)
 
     out = runs_dir / "evaluation_summary.csv"
-    merged.to_csv(out, index=False)
+    wide.to_csv(out, index=False)
     logger.info(
         "Merged %d run(s) → %s (%d models: %s)",
-        len(files), out.name, merged["model"].nunique(),
-        sorted(merged["model"].unique()),
+        len(files), out.name, wide["model"].nunique(),
+        sorted(wide["model"].unique()),
     )
 
     # Generate combined ROC from all historical runs
     generate_combined_roc(runs_dir)
 
-    return merged
+    return wide
 
 
 def generate_combined_roc(runs_dir: Path = RUNS_DIR) -> None:
@@ -199,15 +249,15 @@ def generate_combined_roc(runs_dir: Path = RUNS_DIR) -> None:
 
     Standalone: make eval-summary (calls this after merging).
     """
-    from src.preprocessing import load_splits  # pylint: disable=import-outside-toplevel
+    from src.preprocessing import preprocess_data  # pylint: disable=import-outside-toplevel
 
     proba_files = sorted(runs_dir.glob("*/val_proba.csv"))
     if not proba_files:
         logger.info("No val_proba.csv found — skipping combined ROC")
         return
 
-    # Load y_val once
-    _, _, _, y_val = load_splits()
+    # Load y_val once (re-applies preprocessing — same train/val split)
+    y_val = preprocess_data().y_val
 
     # Collect latest run per model
     model_probas: dict[str, np.ndarray] = {}

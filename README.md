@@ -470,5 +470,7 @@ Detailed design documents are in the `docs/` folder:
 
 | Document | Description |
 |---|---|
+| [`docs/data-flow-schema.md`](docs/data-flow-schema.md) | End-to-end data flow: Mermaid diagram + numbered stage table with inputs, outputs and files written |
 | [`docs/feature_selection.md`](docs/feature_selection.md) | Feature selection pipeline: stages, data state at each step, report format |
 | [`docs/optuna_objective.md`](docs/optuna_objective.md) | Why single objective vs multi-objective, penalty weight tuning, CV interaction |
+| [`docs/templates/data-flow-template.md`](docs/templates/data-flow-template.md) | Reusable template — copy to a new project to document its data flow in the same format |

@@ -13,7 +13,6 @@ import torch
 
 from src.metrics import find_best_threshold, threshold_sweep
 from src.models import gp_model, lgbm_model, mlp_model, svm_model, xgb_model
-from src.preprocessing import load_test, load_test_scaled
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +38,7 @@ def run_study(objective_fn, model_name: str, n_trials: int = DEFAULT_N_TRIALS, u
     return study.best_params, study
 
 
-def train_lgbm(X_train, y_train, X_val, y_val, top_features,
+def train_lgbm(X_train, y_train, X_val, y_val, X_test,
                n_trials=DEFAULT_N_TRIALS, use_cv=False) -> dict:
     """HPO + final training for LightGBM. Returns standardised result dict."""
     if use_cv:
@@ -57,9 +56,7 @@ def train_lgbm(X_train, y_train, X_val, y_val, top_features,
     sweep       = threshold_sweep(y_val, val_proba)
     th_info     = find_best_threshold(y_val, val_proba, secondary_metric="accuracy")
     threshold   = th_info["threshold"]
-    test_proba  = model.predict_proba(load_test()[top_features])[:, 1]
-    test_preds  = (test_proba >= threshold).astype(int)
-    test_index  = load_test()[top_features].index
+    test_preds  = (model.predict_proba(X_test)[:, 1] >= threshold).astype(int)
 
     fi = pd.Series(model.feature_importances_, index=X_train.columns)
     fi_pct = (fi / fi.sum() * 100).sort_values(ascending=False).round(2)
@@ -68,13 +65,13 @@ def train_lgbm(X_train, y_train, X_val, y_val, top_features,
         "name": "lgbm", "label": "LightGBM",
         "model": model, "history": history, "study": study, "params": best,
         "val_proba": val_proba, "train_proba": train_proba,
-        "test_preds": test_preds, "test_index": test_index,
+        "test_preds": test_preds, "test_index": X_test.index,
         "sweep": sweep, "threshold_info": th_info, "threshold": threshold,
         "feature_importance_pct": fi_pct,
     }
 
 
-def train_xgb(X_train, y_train, X_val, y_val, top_features,
+def train_xgb(X_train, y_train, X_val, y_val, X_test,
               n_trials=DEFAULT_N_TRIALS, use_cv=False) -> dict:
     """HPO + final training for XGBoost. Returns standardised result dict."""
     if use_cv:
@@ -92,9 +89,7 @@ def train_xgb(X_train, y_train, X_val, y_val, top_features,
     sweep       = threshold_sweep(y_val, val_proba)
     th_info     = find_best_threshold(y_val, val_proba, secondary_metric="accuracy")
     threshold   = th_info["threshold"]
-    test_proba  = model.predict_proba(load_test()[top_features])[:, 1]
-    test_preds  = (test_proba >= threshold).astype(int)
-    test_index  = load_test()[top_features].index
+    test_preds  = (model.predict_proba(X_test)[:, 1] >= threshold).astype(int)
 
     fi = pd.Series(model.feature_importances_, index=X_train.columns)
     fi_pct = (fi / fi.sum() * 100).sort_values(ascending=False).round(2)
@@ -103,41 +98,39 @@ def train_xgb(X_train, y_train, X_val, y_val, top_features,
         "name": "xgb", "label": "XGBoost",
         "model": model, "history": history, "study": study, "params": best,
         "val_proba": val_proba, "train_proba": train_proba,
-        "test_preds": test_preds, "test_index": test_index,
+        "test_preds": test_preds, "test_index": X_test.index,
         "sweep": sweep, "threshold_info": th_info, "threshold": threshold,
         "feature_importance_pct": fi_pct,
     }
 
 
-def train_mlp(X_train_num, y_train, X_val_num, y_val, mlp_top_cols,
+def train_mlp(X_train, y_train, X_val, y_val, X_test,
               n_trials=DEFAULT_N_TRIALS, use_cv=False) -> dict:
     """HPO + final training for MLP. Returns standardised result dict."""
     if use_cv:
-        X_full = pd.concat([X_train_num, X_val_num])
+        X_full = pd.concat([X_train, X_val])
         y_full = pd.concat([y_train, y_val])
         obj_fn = partial(mlp_model.cv_objective, X=X_full, y=y_full, n_splits=CV_SPLITS)
     else:
-        obj_fn = partial(mlp_model.objective, X_train=X_train_num, y_train=y_train,
-                         X_val=X_val_num, y_val=y_val)
+        obj_fn = partial(mlp_model.objective, X_train=X_train, y_train=y_train,
+                         X_val=X_val, y_val=y_val)
     best, study = run_study(obj_fn, "MLP", n_trials, use_cv)
     logger.info("Training final MLP with best params...")
     model_raw, wrapper, history = mlp_model.train_final(
-        best, X_train_num, y_train, X_val_num, y_val,
+        best, X_train, y_train, X_val, y_val,
     )
 
     model_raw.eval()
     with torch.no_grad():
-        val_t   = torch.tensor(X_val_num.values, dtype=torch.float32).to(mlp_model.DEVICE)
+        val_t   = torch.tensor(X_val.values, dtype=torch.float32).to(mlp_model.DEVICE)
         val_proba = torch.sigmoid(model_raw(val_t)).cpu().numpy()
-
-        train_t = torch.tensor(X_train_num.values, dtype=torch.float32).to(mlp_model.DEVICE)
+        train_t = torch.tensor(X_train.values, dtype=torch.float32).to(mlp_model.DEVICE)
         train_proba = torch.sigmoid(model_raw(train_t)).cpu().numpy()
 
     sweep   = threshold_sweep(y_val, val_proba)
     th_info = find_best_threshold(y_val, val_proba, secondary_metric="accuracy")
     threshold = th_info["threshold"]
 
-    X_test = load_test_scaled()[mlp_top_cols]
     with torch.no_grad():
         test_t = torch.tensor(X_test.values, dtype=torch.float32).to(mlp_model.DEVICE)
         test_preds = (torch.sigmoid(model_raw(test_t)).cpu().numpy() >= threshold).astype(int)
@@ -152,28 +145,26 @@ def train_mlp(X_train_num, y_train, X_val_num, y_val, mlp_top_cols,
     }
 
 
-def train_gp(X_train_num, y_train, X_val_num, y_val, mlp_top_cols,
+def train_gp(X_train, y_train, X_val, y_val, X_test,
              n_trials=DEFAULT_N_TRIALS, use_cv=False) -> dict:
     """HPO + final training for Gaussian Process. Returns standardised result dict."""
     if use_cv:
-        X_full = pd.concat([X_train_num, X_val_num])
+        X_full = pd.concat([X_train, X_val])
         y_full = pd.concat([y_train, y_val])
         obj_fn = partial(gp_model.cv_objective, X=X_full, y=y_full, n_splits=CV_SPLITS)
     else:
-        obj_fn = partial(gp_model.objective, X_train=X_train_num, y_train=y_train,
-                         X_val=X_val_num, y_val=y_val)
+        obj_fn = partial(gp_model.objective, X_train=X_train, y_train=y_train,
+                         X_val=X_val, y_val=y_val)
     best, study = run_study(obj_fn, "GP", n_trials, use_cv)
     logger.info("Training final GP with best params...")
-    model, history = gp_model.train_final(best, X_train_num, y_train, X_val_num, y_val)
+    model, history = gp_model.train_final(best, X_train, y_train, X_val, y_val)
 
-    val_proba   = model.predict_proba(X_val_num)[:, 1]
-    train_proba = model.predict_proba(X_train_num)[:, 1]
+    val_proba   = model.predict_proba(X_val)[:, 1]
+    train_proba = model.predict_proba(X_train)[:, 1]
     sweep       = threshold_sweep(y_val, val_proba)
     th_info     = find_best_threshold(y_val, val_proba, secondary_metric="accuracy")
     threshold   = th_info["threshold"]
-
-    X_test = load_test_scaled()[mlp_top_cols]
-    test_preds = (model.predict_proba(X_test)[:, 1] >= threshold).astype(int)
+    test_preds  = (model.predict_proba(X_test)[:, 1] >= threshold).astype(int)
 
     return {
         "name": "gp", "label": "GaussianProcess",
@@ -185,7 +176,7 @@ def train_gp(X_train_num, y_train, X_val_num, y_val, mlp_top_cols,
     }
 
 
-def train_svm(X_train, y_train, X_val, y_val, feat_cols,
+def train_svm(X_train, y_train, X_val, y_val, X_test,
               n_trials=DEFAULT_N_TRIALS, use_cv=False) -> dict:
     """HPO + final training for SVM. Returns standardised result dict."""
     if use_cv:
@@ -204,9 +195,7 @@ def train_svm(X_train, y_train, X_val, y_val, feat_cols,
     sweep       = threshold_sweep(y_val, val_proba)
     th_info     = find_best_threshold(y_val, val_proba, secondary_metric="accuracy")
     threshold   = th_info["threshold"]
-
-    X_test = load_test_scaled()[feat_cols]
-    test_preds = (model.predict_proba(X_test)[:, 1] >= threshold).astype(int)
+    test_preds  = (model.predict_proba(X_test)[:, 1] >= threshold).astype(int)
 
     return {
         "name": "svm", "label": "SVM",

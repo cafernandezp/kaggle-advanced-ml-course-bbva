@@ -1,22 +1,49 @@
 feature,missing_pct,mi_score,max_corr_with_other,max_corr_partner,stage1_missing,stage2_correlation,stage3_mi,stage4_pfi,dropped_at,drop_reason,selected
-duration,0.0,0.0767,0.0968,nr.employed,True,True,True,True,selected,,True
-euribor3m,0.0,0.0717,0.9385,emp.var.rate,True,True,True,True,selected,,True
-cons.price.idx,0.0,0.0675,0.6597,emp.var.rate,True,True,True,True,selected,,True
-cons.conf.idx,0.0,0.0671,0.2605,contact,True,True,True,True,selected,,True
-poutcome,0.0,0.0324,0.5126,previous,True,True,True,True,selected,,True
-month,0.0,0.0303,0.4722,euribor3m,True,True,True,True,selected,,True
-was_contacted,0.0,0.029,0.5018,previous,True,True,True,True,selected,,True
-age,0.0,0.0138,0.4367,marital,True,True,True,True,selected,,True
-contact,0.0,0.0124,0.6568,cons.price.idx,True,True,True,True,selected,,True
-education,4.32,0.0042,0.2144,default,True,True,True,True,selected,,True
-default,0.0,0.0038,0.2144,education,True,True,True,True,selected,,True
-campaign,0.0,0.0018,0.1577,emp.var.rate,True,True,True,True,selected,,True
-loan,0.0,0.0009,0.0374,housing,True,True,True,True,selected,,True
-housing,0.0,0.0005,0.0834,contact,True,True,True,True,selected,,True
-day_of_week,0.0,0.0,0.0648,campaign,True,True,True,True,selected,,True
-nr.employed,0.0,0.0634,0.9459,emp.var.rate,True,False,False,False,stage2_correlation,spearman corr=0.946 with emp.var.rate,False
-emp.var.rate,0.0,0.0545,0.9459,nr.employed,True,False,False,False,stage2_correlation,spearman corr=0.946 with nr.employed,False
-pdays,96.47,0.0271,0.2654,was_contacted,False,False,False,False,stage1_missing,96.47% missing,False
-previous,0.0,0.018,0.5126,poutcome,True,True,True,False,stage4_pfi,pfi below top-n,False
-job,0.0,0.0083,0.0366,cons.conf.idx,True,True,True,False,stage4_pfi,pfi below top-n,False
-marital,0.0,0.0022,0.4367,age,True,True,True,False,stage4_pfi,pfi below top-n,False
+duration,0.0,0.0781,0.0968,nr.employed,True,True,True,True,selected,,True
+euribor3m,0.0,0.0722,0.9385,emp.var.rate,True,True,True,True,selected,,True
+cons.conf.idx,0.0,0.0695,0.5533,month_aug,True,True,True,True,selected,,True
+cons.price.idx,0.0,0.0688,0.6597,emp.var.rate,True,True,True,True,selected,,True
+was_contacted,0.0,0.0319,0.949,poutcome_success,True,True,True,True,selected,,True
+pdays,0.0,0.0266,0.3712,poutcome_success,True,True,True,True,selected,,True
+previous,0.0,0.0219,0.9984,poutcome_nonexistent,True,True,True,True,selected,,True
+age,0.0,0.0122,0.4547,marital_single,True,True,True,True,selected,,True
+contact_telephone,0.0,0.0118,0.6568,cons.price.idx,True,True,True,True,selected,,True
+month_mar,0.0,0.0077,0.1551,nr.employed,True,True,True,True,selected,,True
+month_may,0.0,0.0062,0.4287,nr.employed,True,True,True,True,selected,,True
+month_oct,0.0,0.0059,0.1946,nr.employed,True,True,True,True,selected,,True
+education,0.0,0.0045,0.5323,job_blue-collar,True,True,True,True,selected,,True
+default_unknown,0.0,0.0033,0.2145,education,True,True,True,True,selected,,True
+campaign,0.0,0.0,0.1577,emp.var.rate,True,True,True,True,selected,,True
+nr.employed,0.0,0.0626,0.9459,emp.var.rate,True,False,False,False,stage2_correlation,spearman corr=0.946 with emp.var.rate,False
+emp.var.rate,0.0,0.0527,0.9459,nr.employed,True,False,False,False,stage2_correlation,spearman corr=0.946 with nr.employed,False
+poutcome_success,0.0,0.0284,0.949,was_contacted,True,False,False,False,stage2_correlation,spearman corr=0.949 with was_contacted,False
+poutcome_nonexistent,0.0,0.0167,0.9984,previous,True,False,False,False,stage2_correlation,spearman corr=0.998 with previous,False
+job_services,0.0,0.0072,0.1787,job_blue-collar,True,True,False,False,stage3_mi,mi=0.0072 (below top-k),False
+marital_married,0.0,0.0055,0.779,marital_single,True,True,True,False,stage4_pfi,pfi below top-n,False
+month_sep,0.0,0.0039,0.2012,nr.employed,True,True,False,False,stage3_mi,mi=0.0039 (below top-k),False
+job_blue-collar,0.0,0.0032,0.5323,education,True,True,True,False,stage4_pfi,pfi below top-n,False
+day_of_week_wed,0.0,0.0032,0.2592,day_of_week_thu,True,True,False,False,stage3_mi,mi=0.0032 (below top-k),False
+month_aug,0.0,0.003,0.5533,cons.conf.idx,True,True,False,False,stage3_mi,mi=0.0030 (below top-k),False
+job_retired,0.0,0.0026,0.3125,age,True,True,False,False,stage3_mi,mi=0.0026 (below top-k),False
+month_jul,0.0,0.0021,0.438,emp.var.rate,True,True,False,False,stage3_mi,mi=0.0021 (below top-k),False
+job_unemployed,0.0,0.002,0.0834,job_blue-collar,True,True,False,False,stage3_mi,mi=0.0020 (below top-k),False
+day_of_week_thu,0.0,0.0017,0.2614,day_of_week_mon,True,True,False,False,stage3_mi,mi=0.0017 (below top-k),False
+job_technician,0.0,0.0016,0.2368,job_blue-collar,True,True,False,False,stage3_mi,mi=0.0016 (below top-k),False
+job_management,0.0,0.0009,0.2025,education,True,True,False,False,stage3_mi,mi=0.0009 (below top-k),False
+month_jun,0.0,0.0009,0.4584,cons.price.idx,True,True,False,False,stage3_mi,mi=0.0009 (below top-k),False
+marital_single,0.0,0.0008,0.779,marital_married,True,True,False,False,stage3_mi,mi=0.0008 (below top-k),False
+day_of_week_tue,0.0,0.0007,0.2529,day_of_week_thu,True,True,True,False,stage4_pfi,pfi below top-n,False
+job_entrepreneur,0.0,0.0003,0.1015,job_blue-collar,True,True,False,False,stage3_mi,mi=0.0003 (below top-k),False
+job_student,0.0,0.0001,0.2214,marital_single,True,True,False,False,stage3_mi,mi=0.0001 (below top-k),False
+housing_yes,0.0,0.0001,0.1696,housing_unknown,True,True,True,False,stage4_pfi,pfi below top-n,False
+job_housemaid,0.0,0.0,0.1207,education,True,True,False,False,stage3_mi,mi=0.0000 (below top-k),False
+job_self-employed,0.0,0.0,0.1031,job_blue-collar,True,True,False,False,stage3_mi,mi=0.0000 (below top-k),False
+job_unknown,0.0,0.0,0.051,default_unknown,True,True,False,False,stage3_mi,mi=0.0000 (below top-k),False
+marital_unknown,0.0,0.0,0.0544,marital_married,True,True,False,False,stage3_mi,mi=0.0000 (below top-k),False
+default_yes,0.0,0.0,0.0301,job_unemployed,True,True,False,False,stage3_mi,mi=0.0000 (below top-k),False
+housing_unknown,0.0,0.0,1.0,loan_unknown,True,False,False,False,stage2_correlation,spearman corr=1.000 with loan_unknown,False
+loan_unknown,0.0,0.0,1.0,housing_unknown,True,True,False,False,stage3_mi,mi=0.0000 (below top-k),False
+loan_yes,0.0,0.0,0.0683,housing_unknown,True,True,False,False,stage3_mi,mi=0.0000 (below top-k),False
+month_dec,0.0,0.0,0.1116,emp.var.rate,True,True,True,False,stage4_pfi,pfi below top-n,False
+month_nov,0.0,0.0,0.2306,month_may,True,True,False,False,stage3_mi,mi=0.0000 (below top-k),False
+day_of_week_mon,0.0,0.0,0.2614,day_of_week_thu,True,True,False,False,stage3_mi,mi=0.0000 (below top-k),False

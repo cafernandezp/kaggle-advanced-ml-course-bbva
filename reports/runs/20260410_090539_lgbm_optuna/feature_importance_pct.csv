@@ -1,0 +1,14 @@
+feature,importance_pct
+euribor3m,23.38
+duration,18.66
+age,14.0
+cons.price.idx,9.47
+month,8.34
+cons.conf.idx,7.78
+education,6.01
+campaign,3.67
+pdays,3.33
+contact,1.73
+previous,1.57
+default,1.07
+was_contacted,0.99

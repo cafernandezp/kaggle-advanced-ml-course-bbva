@@ -1,9 +1,11 @@
 """
-Feature engineering and train/validation split for the banking marketing dataset.
+Feature engineering, train/val splits, imputation, and scaling.
 
-Importable module used by train.py.
-Run standalone to verify split sizes:  python -m src.preprocessing
+Single entry point: preprocess_data() returns a ProcessedData container with
+all variants (tree, numeric, scaled) for train, val, and test — built once
+from a single CSV read.
 """
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -13,7 +15,7 @@ from sklearn.preprocessing import StandardScaler
 
 ROOT = Path(__file__).parent.parent
 TRAIN_PATH = ROOT / "data/raw/train_set.csv"
-TEST_PATH = ROOT / "data/raw/test_set.csv"
+TEST_PATH  = ROOT / "data/raw/test_set.csv"
 
 RANDOM_STATE = 42
 VAL_SIZE = 0.2
@@ -42,112 +44,153 @@ NUM_COLS = [
 TARGET = "subscribed"
 
 
+# ── Container ────────────────────────────────────────────────────────────────
+
+@dataclass
+class ProcessedData:  # pylint: disable=too-many-instance-attributes,invalid-name
+    """All preprocessed data variants and fitted transformers, built in one pass."""
+
+    # Tree variant — category dtypes, NaN preserved (LightGBM/XGBoost native)
+    X_train: pd.DataFrame
+    X_val:   pd.DataFrame
+    X_test:  pd.DataFrame
+
+    # Numeric variant — one-hot encoded, NaN imputed, float32 (feature selection / MI)
+    X_train_num: pd.DataFrame
+    X_val_num:   pd.DataFrame
+    X_test_num:  pd.DataFrame
+
+    # Scaled variant — numeric + StandardScaler (MLP, SVM, GP)
+    X_train_scaled: pd.DataFrame
+    X_val_scaled:   pd.DataFrame
+    X_test_scaled:  pd.DataFrame
+
+    # Targets
+    y_train: pd.Series
+    y_val:   pd.Series
+
+    # Fitted transformers (kept for reproducibility / debugging)
+    scaler: StandardScaler
+    median_imputer: pd.Series  # the train medians used for NaN imputation
+
+
+# ── Building blocks ──────────────────────────────────────────────────────────
+
 def build_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Apply feature engineering. Input must not contain the target column."""
+    """Apply feature engineering. Input must not contain the target column.
+
+    Produces the *tree variant*: category dtypes, NaN preserved.
+    """
     df = df.copy()
 
     # WARNING — 'duration' is leaky: it equals the call duration in seconds, which is
-    # only known after the call ends (i.e., after the outcome is determined). Kept because
-    # the competition test set includes it, but a real production model must exclude it.
+    # only known after the call ends. Kept because the competition test set includes it.
 
     # pdays=999 is a sentinel meaning 'client was never previously contacted'.
-    # Split into a binary flag + replace 999 with NaN for the numeric value.
     df["was_contacted"] = (df["pdays"] != 999).astype(np.int8)
     df["pdays"] = df["pdays"].replace(999, np.nan)
 
     # education: ordinal encoding (more education = higher integer); unknown → NaN
     df["education"] = df["education"].map(EDUCATION_ORDER)
 
-    # Encode remaining categoricals as pandas Categorical — LightGBM handles these natively.
+    # Encode remaining categoricals as pandas Categorical — LightGBM handles natively.
     for col in CAT_COLS:
         df[col] = df[col].astype("category")
 
     return df
 
 
-def load_splits() -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
-    """Return stratified train/validation splits ready for model training."""
-    raw = pd.read_csv(TRAIN_PATH, index_col="Id")
-    X = build_features(raw.drop(columns=[TARGET]))
-    y = raw[TARGET]
-    return train_test_split(
-        X, y, test_size=VAL_SIZE, stratify=y, random_state=RANDOM_STATE
-    )
+def _to_numeric(
+    df_tree: pd.DataFrame,
+    median_imputer: pd.Series | None = None,
+) -> tuple[pd.DataFrame, pd.Series]:
+    """Convert tree variant → numeric variant: one-hot encode + median impute.
 
+    Args:
+        df_tree: DataFrame in tree variant (category dtypes, NaN present)
+        median_imputer: pre-computed medians from train (use None to fit on this df)
 
-def load_test() -> pd.DataFrame:
-    """Return the processed test set (no target column)."""
-    raw = pd.read_csv(TEST_PATH, index_col="Id")
-    return build_features(raw)
-
-
-def build_features_numeric(df: pd.DataFrame) -> pd.DataFrame:
-    """Same as build_features() but one-hot encodes categoricals and imputes NaN.
-
-    Returns a fully float32 DataFrame with no category dtypes and no missing values.
-    NaN sources (education=unknown → NaN, pdays=999 → NaN) are filled with column medians.
+    Returns:
+        (numeric DataFrame, fitted median series)
     """
-    df = build_features(df)
-    df = pd.get_dummies(df, columns=CAT_COLS, drop_first=True)
-    df = df.astype("float32")
-    df = df.fillna(df.median())
-    return df
+    df_num = pd.get_dummies(df_tree, columns=CAT_COLS, drop_first=True).astype("float32")
+    if median_imputer is None:
+        median_imputer = df_num.median()
+    df_num = df_num.fillna(median_imputer)
+    return df_num, median_imputer
 
 
-def load_splits_numeric() -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
-    """Stratified train/val split with numeric (one-hot) features for MLP."""
-    raw = pd.read_csv(TRAIN_PATH, index_col="Id")
-    X = build_features_numeric(raw.drop(columns=[TARGET]))
-    y = raw[TARGET]
-    return train_test_split(
-        X, y, test_size=VAL_SIZE, stratify=y, random_state=RANDOM_STATE
-    )
-
-
-def load_test_numeric() -> pd.DataFrame:
-    """Processed test set with numeric (one-hot) features for MLP."""
-    raw = pd.read_csv(TEST_PATH, index_col="Id")
-    return build_features_numeric(raw)
-
-
-# ── Scaled numeric variants (for MLP, SVM, GP, and other scale-sensitive models) ──
-
-_scaler: StandardScaler | None = None  # pylint: disable=invalid-name
-
-
-def load_splits_scaled() -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
-    """Stratified train/val split with scaled numeric features.
-
-    Fits StandardScaler on train, transforms both train and val.
-    The fitted scaler is cached so load_test_scaled() uses the same transform.
-    """
-    global _scaler  # pylint: disable=global-statement
-    x_tr, x_vl, y_tr, y_vl = load_splits_numeric()
-    _scaler = StandardScaler()
-    x_tr_sc = pd.DataFrame(
-        _scaler.fit_transform(x_tr), index=x_tr.index, columns=x_tr.columns,
-    ).astype("float32")
-    x_vl_sc = pd.DataFrame(
-        _scaler.transform(x_vl), index=x_vl.index, columns=x_vl.columns,
-    ).astype("float32")
-    return x_tr_sc, x_vl_sc, y_tr, y_vl
-
-
-def load_test_scaled() -> pd.DataFrame:
-    """Processed test set with scaled numeric features.
-
-    Uses the scaler fitted by load_splits_scaled(). Must call load_splits_scaled() first.
-    """
-    if _scaler is None:
-        raise RuntimeError("Call load_splits_scaled() before load_test_scaled().")
-    X_test = load_test_numeric()
+def _scale(
+    df_num: pd.DataFrame,
+    scaler: StandardScaler,
+) -> pd.DataFrame:
+    """Apply a fitted StandardScaler to a numeric DataFrame, preserving index/columns."""
     return pd.DataFrame(
-        _scaler.transform(X_test), index=X_test.index, columns=X_test.columns,
+        scaler.transform(df_num),
+        index=df_num.index,
+        columns=df_num.columns,
     ).astype("float32")
 
+
+# ── Single entry point ───────────────────────────────────────────────────────
+
+def preprocess_data() -> ProcessedData:
+    """Read raw CSVs once and build all preprocessed variants.
+
+    Steps:
+        1. Read train_set.csv and test_set.csv
+        2. Apply build_features() → tree variant
+        3. Stratified train/val split
+        4. Build numeric variant (one-hot + imputed) using TRAIN medians
+        5. Build scaled variant (StandardScaler fit on TRAIN only)
+        6. Apply same transformations to test set (no leakage)
+
+    Returns:
+        ProcessedData with all 9 DataFrames + targets + fitted transformers.
+    """
+    # 1. Read raw CSVs
+    train_raw = pd.read_csv(TRAIN_PATH, index_col="Id")
+    test_raw  = pd.read_csv(TEST_PATH,  index_col="Id")
+
+    # 2. Tree variant (category dtypes, NaN preserved)
+    train_tree = build_features(train_raw.drop(columns=[TARGET]))
+    test_tree  = build_features(test_raw)
+    y          = train_raw[TARGET]
+
+    # 3. Stratified train/val split — same indices for all variants
+    X_train, X_val, y_train, y_val = train_test_split(
+        train_tree, y, test_size=VAL_SIZE, stratify=y, random_state=RANDOM_STATE,
+    )
+
+    # 4. Numeric variant — fit imputer on TRAIN only, apply to val + test
+    X_train_num, median_imputer = _to_numeric(X_train, median_imputer=None)
+    X_val_num,  _ = _to_numeric(X_val,  median_imputer=median_imputer)
+    X_test_num, _ = _to_numeric(test_tree, median_imputer=median_imputer)
+
+    # Align test columns with train (in case test has fewer dummy levels)
+    X_val_num  = X_val_num.reindex(columns=X_train_num.columns, fill_value=0)
+    X_test_num = X_test_num.reindex(columns=X_train_num.columns, fill_value=0)
+
+    # 5. Scaled variant — fit StandardScaler on TRAIN only
+    scaler = StandardScaler()
+    scaler.fit(X_train_num)
+    X_train_scaled = _scale(X_train_num, scaler)
+    X_val_scaled   = _scale(X_val_num,   scaler)
+    X_test_scaled  = _scale(X_test_num,  scaler)
+
+    return ProcessedData(
+        X_train=X_train, X_val=X_val, X_test=test_tree,
+        X_train_num=X_train_num, X_val_num=X_val_num, X_test_num=X_test_num,
+        X_train_scaled=X_train_scaled, X_val_scaled=X_val_scaled, X_test_scaled=X_test_scaled,
+        y_train=y_train, y_val=y_val,
+        scaler=scaler, median_imputer=median_imputer,
+    )
+
+
+# ── Helper for tree → numeric column name mapping ────────────────────────────
 
 def expand_features_for_mlp(selected_features: list[str], X_num: pd.DataFrame) -> list[str]:
-    """Map tree feature names to their corresponding columns in the one-hot numeric DataFrame.
+    """Map tree feature names to their corresponding columns in the one-hot DataFrame.
 
     Categorical features (in CAT_COLS) expand to all derived dummy columns;
     numeric / ordinal features map 1:1.
@@ -166,7 +209,10 @@ def expand_features_for_mlp(selected_features: list[str], X_num: pd.DataFrame) -
 
 
 if __name__ == "__main__":
-    X_train, X_val, y_train, y_val = load_splits()
-    print(f"Train : {X_train.shape}  |  positive rate: {y_train.mean():.2%}")
-    print(f"Val   : {X_val.shape}  |  positive rate: {y_val.mean():.2%}")
-    print(f"Features ({len(X_train.columns)}): {X_train.columns.tolist()}")
+    data = preprocess_data()
+    print(f"Train tree   : {data.X_train.shape}  positive rate: {data.y_train.mean():.2%}")
+    print(f"Val   tree   : {data.X_val.shape}    positive rate: {data.y_val.mean():.2%}")
+    print(f"Train num    : {data.X_train_num.shape}")
+    print(f"Train scaled : {data.X_train_scaled.shape}")
+    print(f"Test  tree   : {data.X_test.shape}")
+    print(f"Test  scaled : {data.X_test_scaled.shape}")

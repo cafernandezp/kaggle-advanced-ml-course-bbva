@@ -10,7 +10,6 @@ Usage:
 import logging
 import sys
 import warnings
-from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
@@ -34,7 +33,7 @@ from src.plots import (
     plot_permutation_importance, plot_roc_curves, plot_threshold_selection,
 )
 from src.preprocessing import (
-    expand_features_for_mlp, load_splits, load_splits_scaled,
+    ProcessedData, expand_features_for_mlp, preprocess_data,
 )
 from src.train import ALL_MODELS, TRAINERS
 from src.tracking import ExperimentTracker
@@ -48,25 +47,6 @@ RUNS_DIR.mkdir(parents=True, exist_ok=True)
 RANDOM_STATE = 42
 TOP_N_FEATURES = 15
 EXPERIMENT = "banking-marketing-classification"
-
-
-# ── Data container ────────────────────────────────────────────────────────────
-
-@dataclass
-class PipelineData:  # pylint: disable=too-many-instance-attributes,invalid-name
-    """Typed container for all data splits produced by load_and_select_features.
-
-    Attribute names use ML conventions (X_train, X_val) rather than snake_case.
-    """
-
-    X_train: pd.DataFrame
-    X_val: pd.DataFrame
-    y_train: pd.Series
-    y_val: pd.Series
-    X_train_scaled: pd.DataFrame
-    X_val_scaled: pd.DataFrame
-    top_features: list = field(default_factory=list)
-    mlp_top_cols: list = field(default_factory=list)
 
 
 # ── Setup helpers ─────────────────────────────────────────────────────────────
@@ -100,92 +80,167 @@ def setup_mlflow():
 
 # ── Stage functions ───────────────────────────────────────────────────────────
 
-def load_data() -> PipelineData:
-    """Load all data splits. No feature selection — returns the full feature set."""
+def load_data() -> ProcessedData:
+    """Single call: read raw CSVs, build all variants, return ProcessedData container."""
     logger = logging.getLogger(__name__)
-    logger.info("Loading data...")
-    X_train, X_val, y_train, y_val = load_splits()
-    X_train_scaled, X_val_scaled, _, _ = load_splits_scaled()
-    logger.info("Tree splits  : train=%s  val=%s", X_train.shape, X_val.shape)
-    logger.info("Scaled splits: train=%s  val=%s", X_train_scaled.shape, X_val_scaled.shape)
-    return PipelineData(
-        X_train=X_train, X_val=X_val, y_train=y_train, y_val=y_val,
-        X_train_scaled=X_train_scaled, X_val_scaled=X_val_scaled,
-    )
+    logger.info("Loading and preprocessing data...")
+    data = preprocess_data()
+    logger.info("Tree splits  : train=%s  val=%s  test=%s",
+                data.X_train.shape, data.X_val.shape, data.X_test.shape)
+    logger.info("Numeric splits: train=%s  val=%s  test=%s",
+                data.X_train_num.shape, data.X_val_num.shape, data.X_test_num.shape)
+    logger.info("Scaled splits : train=%s  val=%s  test=%s",
+                data.X_train_scaled.shape, data.X_val_scaled.shape, data.X_test_scaled.shape)
+    return data
 
 
-def apply_feature_selection(data: PipelineData) -> PipelineData:
-    """Run feature selection stages on the data. Each stage is explicit and skippable.
+def _onehot_to_original(col_name: str, original_cols: list[str]) -> str:
+    """Map a one-hot column name back to its original feature.
 
-    Comment out any stage you don't need. The order matters:
-    missing → correlation → MI → PFI
+    Examples:
+        "job_blue-collar" → "job"
+        "duration"        → "duration"
+    """
+    for orig in original_cols:
+        if col_name == orig or col_name.startswith(orig + "_"):
+            return orig
+    return col_name
+
+
+def apply_feature_selection(data: ProcessedData) -> tuple[ProcessedData, list[str], list[str]]:
+    """Run feature selection on the *numeric variant* (already imputed and one-hot encoded),
+    then map the selected columns back to original feature names for the tree variant.
+
+    Each stage is explicit and skippable — comment out any line to skip it.
+
+    Returns:
+        (filtered_data, top_features, mlp_top_cols)
     """
     logger = logging.getLogger(__name__)
-    X_train, X_val = data.X_train, data.X_val
+    # Feature selection runs on the numeric variant (no NaN, no category dtypes)
+    X_train_num, X_val_num = data.X_train_num, data.X_val_num
     y_train = data.y_train
-    n_start = X_train.shape[1]
-    logger.info("Feature selection: starting with %d features", n_start)
+    n_start = X_train_num.shape[1]
+    logger.info("Feature selection: starting with %d numeric features", n_start)
     survivors: dict[str, list[str]] = {}
 
-    # Stage 1: drop features with too many missing values
-    kept = drop_high_missing(X_train, threshold=0.5)
+    # Stage 1: drop features with too many missing values (none expected post-imputation,
+    # but kept for safety / future raw inputs)
+    kept = drop_high_missing(X_train_num, threshold=0.5)
     survivors["stage1_missing"] = kept.copy()
-    X_train, X_val = X_train[kept], X_val[kept]
+    X_train_num, X_val_num = X_train_num[kept], X_val_num[kept]
 
     # Stage 2: drop highly correlated features (Spearman, keep the one with higher MI)
-    numeric_cols = X_train.select_dtypes(include="number").columns.tolist()
-    if numeric_cols:
-        kept_num = drop_correlated_features(X_train[numeric_cols], y_train, threshold=0.9)
-        non_numeric = [c for c in X_train.columns if c not in numeric_cols]
-        kept = non_numeric + kept_num
-        X_train, X_val = X_train[kept], X_val[kept]
-    survivors["stage2_correlation"] = list(X_train.columns)
+    kept = drop_correlated_features(X_train_num, y_train, threshold=0.9)
+    survivors["stage2_correlation"] = kept.copy()
+    X_train_num, X_val_num = X_train_num[kept], X_val_num[kept]
 
     # Stage 3: keep top K features by Mutual Information with target
-    kept = select_top_mutual_information(X_train, y_train, top_k=20)
+    kept = select_top_mutual_information(X_train_num, y_train, top_k=20)
     survivors["stage3_mi"] = kept.copy()
-    X_train, X_val = X_train[kept], X_val[kept]
+    X_train_num, X_val_num = X_train_num[kept], X_val_num[kept]
 
     # Stage 4: keep top N features by LightGBM PFI
-    top_features = select_top_features_lgbm_pfi_based(X_train, y_train, X_val, data.y_val, top_n=15)
-    survivors["stage4_pfi"] = top_features.copy()
-    X_train, X_val = X_train[top_features], X_val[top_features]
+    selected_num = select_top_features_lgbm_pfi_based(
+        X_train_num, y_train, X_val_num, data.y_val, top_n=15,
+    )
+    survivors["stage4_pfi"] = selected_num.copy()
 
-    logger.info("Feature selection: %d → %d features", n_start, len(top_features))
-    logger.info("Final features: %s", top_features)
+    # Map one-hot columns back to original feature names (preserve order, dedupe)
+    original_cols = list(data.X_train.columns)
+    seen: set[str] = set()
+    top_features: list[str] = []
+    for col in selected_num:
+        orig = _onehot_to_original(col, original_cols)
+        if orig not in seen:
+            seen.add(orig)
+            top_features.append(orig)
 
-    # Build and save the per-feature report (with stage-by-stage verdicts)
+    # Final scaled/numeric column list = expand selected tree features back to one-hot
+    mlp_top_cols = expand_features_for_mlp(top_features, data.X_train_num)
+
+    logger.info(
+        "Feature selection: %d numeric → %d numeric (top PFI) → %d original features",
+        n_start, len(selected_num), len(top_features),
+    )
+    logger.info("Final features (tree names): %s", top_features)
+
+    # Build and save the per-feature report (using numeric variant for consistency)
     fs_report = build_feature_selection_report(
-        data.X_train, data.y_train, survivors, top_features,
+        data.X_train_num, data.y_train, survivors, selected_num,
     )
     fs_report.to_csv(RUNS_DIR / "feature_selection_report.csv", index=False)
     logger.info("Feature selection report → %s", RUNS_DIR / "feature_selection_report.csv")
 
-    # Apply to scaled data
-    mlp_top_cols = expand_features_for_mlp(top_features, data.X_train_scaled)
-    X_train_scaled = data.X_train_scaled[mlp_top_cols]
-    X_val_scaled   = data.X_val_scaled[mlp_top_cols]
-    logger.info("Tree features: %d  |  Scaled features: %d", len(top_features), len(mlp_top_cols))
-
-    return PipelineData(
-        X_train=X_train, X_val=X_val, y_train=data.y_train, y_val=data.y_val,
-        X_train_scaled=X_train_scaled, X_val_scaled=X_val_scaled,
-        top_features=top_features, mlp_top_cols=mlp_top_cols,
+    filtered = ProcessedData(
+        X_train=data.X_train[top_features],
+        X_val=data.X_val[top_features],
+        X_test=data.X_test[top_features],
+        X_train_num=data.X_train_num[mlp_top_cols],
+        X_val_num=data.X_val_num[mlp_top_cols],
+        X_test_num=data.X_test_num[mlp_top_cols],
+        X_train_scaled=data.X_train_scaled[mlp_top_cols],
+        X_val_scaled=data.X_val_scaled[mlp_top_cols],
+        X_test_scaled=data.X_test_scaled[mlp_top_cols],
+        y_train=data.y_train,
+        y_val=data.y_val,
+        scaler=data.scaler,
+        median_imputer=data.median_imputer,
     )
+    logger.info("Tree features: %d  |  Scaled features: %d", len(top_features), len(mlp_top_cols))
+    return filtered, top_features, mlp_top_cols
 
 
-def train_models(models: list[str], data: PipelineData, n_trials: int, use_cv: bool = False) -> list[dict]:
-    """Train each requested model and return a list of standardised result dicts."""
+def train_and_save_models(
+    models: list[str],
+    data: ProcessedData,
+    tracker: ExperimentTracker,
+    n_trials: int,
+    use_cv: bool = False,
+) -> list[dict]:
+    """Train each model and save its artifacts IMMEDIATELY after training finishes.
+
+    This means: if model 3 of 5 crashes, models 1 and 2 are already on disk.
+    You can also `tail -f` the run folder while later models are still training.
+
+    Saves per model:
+    - Custom tracker: run.json, evaluation_results.csv, threshold_sweep.csv,
+      submission.csv, model.pkl, val_proba.csv, threshold_selection.png,
+      optuna_trials.csv, optuna_study.pkl, feature_importance_pct.csv (tree only)
+    - MLflow: params, metrics, model artifact
+
+    Returns the full list of trained results (used afterwards for cross-model
+    plots and the best-submission selection).
+    """
+    logger = logging.getLogger(__name__)
+    setup_mlflow()
     _data_map = {
-        "tree":   (data.X_train,        data.X_val,        data.top_features),
-        "scaled": (data.X_train_scaled, data.X_val_scaled, data.mlp_top_cols),
+        "tree":   (data.X_train,        data.X_val,        data.X_test),
+        "scaled": (data.X_train_scaled, data.X_val_scaled, data.X_test_scaled),
     }
-    trained = []
+    trained: list[dict] = []
     for name in models:
         spec = TRAINERS[name]
-        x_tr, x_vl, feat_key = _data_map[spec["data"]]
-        result = spec["fn"](x_tr, data.y_train, x_vl, data.y_val, feat_key, n_trials, use_cv=use_cv)
+        x_tr, x_vl, x_te = _data_map[spec["data"]]
+
+        # Train
+        result = spec["fn"](x_tr, data.y_train, x_vl, data.y_val, x_te, n_trials, use_cv=use_cv)
+
+        # Evaluate
+        model_eval = pd.DataFrame(evaluate_model(
+            result["name"], result["threshold"],
+            result["train_proba"], result["val_proba"],
+            result["test_preds"], data.y_train, data.y_val,
+        ))
+        run_metrics = build_run_metrics(model_eval, result["threshold_info"], result["threshold"])
+
+        # Save IMMEDIATELY — before training the next model
+        save_to_tracker(result, run_metrics, model_eval, tracker)
+        save_to_mlflow(result, run_metrics)
+        logger.info("[%s] artifacts saved — moving to next model", name)
+
         trained.append(result)
+
     return trained
 
 
@@ -236,19 +291,8 @@ def save_to_mlflow(res: dict, run_metrics: dict):
         logger.info("[mlflow] Run logged: %s", res["name"])
 
 
-def save_all_artifacts(trained: list[dict], data: PipelineData, tracker: ExperimentTracker):
-    """Save artifacts for all models via custom tracker + MLflow, then merge summary."""
-    setup_mlflow()
-    for res in trained:
-        model_eval = pd.DataFrame(evaluate_model(
-            res["name"], res["threshold"],
-            res["train_proba"], res["val_proba"],
-            res["test_preds"], data.y_train, data.y_val,
-        ))
-        run_metrics = build_run_metrics(model_eval, res["threshold_info"], res["threshold"])
-        save_to_tracker(res, run_metrics, model_eval, tracker)
-        save_to_mlflow(res, run_metrics)
-
+def merge_summary_and_log():
+    """Merge per-model evaluation_results.csv into evaluation_summary.csv (also generates combined ROC)."""
     merge_evaluation_summary()
     logging.getLogger(__name__).info("Evaluation summary → %s", RUNS_DIR / "evaluation_summary.csv")
 
@@ -277,7 +321,7 @@ def print_summary(trained: list[dict], eval_df: pd.DataFrame):
     logger.info("=" * 80)
 
 
-def generate_plots(trained: list[dict], data: PipelineData):
+def generate_plots(trained: list[dict], data: ProcessedData):
     """Generate comparison plots: ROC, loss curves, feature importance, PFI."""
     plot_roc_curves({r["name"]: r["val_proba"] for r in trained}, data.y_val)
     plot_loss_curves({r["name"]: r["history"] for r in trained})
@@ -340,9 +384,12 @@ def main(models, n_trials, cv, report):
     logger.info("Models to train: %s", models)
 
     data = load_data()
-    data = apply_feature_selection(data)
-    trained = train_models(models, data, n_trials, use_cv=cv)
+    data, _, _ = apply_feature_selection(data)
 
+    # Train + save each model incrementally — artifacts on disk after every model
+    trained = train_and_save_models(models, data, tracker, n_trials, use_cv=cv)
+
+    # Build the cross-model evaluation table (used for summary table + best-model selection)
     eval_df = evaluate_all(
         {r["name"]: {"threshold": r["threshold"], "train_proba": r["train_proba"],
                      "val_proba": r["val_proba"], "test_preds": r["test_preds"]}
@@ -350,7 +397,8 @@ def main(models, n_trials, cv, report):
         data.y_train, data.y_val,
     )
 
-    save_all_artifacts(trained, data, tracker)
+    # Final cross-model artifacts (need all models)
+    merge_summary_and_log()
     print_summary(trained, eval_df)
     generate_plots(trained, data)
     save_best_submission(trained, eval_df)

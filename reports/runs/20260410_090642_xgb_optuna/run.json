@@ -1,0 +1,35 @@
+{
+  "experiment": "banking-marketing-classification",
+  "run_name": "xgb_optuna",
+  "timestamp": "20260410_090642",
+  "params": {
+    "n_estimators": 1250,
+    "max_depth": 4,
+    "eta": 0.006734235453590192,
+    "subsample": 0.6140223818248427,
+    "colsample_bytree": 0.9055779574802415,
+    "min_child_weight": 26,
+    "reg_alpha": 0.9776595002051023,
+    "reg_lambda": 0.0010379906159105163,
+    "model": "XGBoost",
+    "n_trials": 30
+  },
+  "metrics": {
+    "val_auc": 0.9472,
+    "train_auc": 0.9523,
+    "val_accuracy": 0.8857,
+    "train_accuracy": 0.8904,
+    "val_precision": 0.4955,
+    "train_precision": 0.5073,
+    "val_recall": 0.8889,
+    "train_recall": 0.8771,
+    "val_ks": 0.7882,
+    "train_ks": 0.7838,
+    "val_gini": 0.8944,
+    "train_gini": 0.9046,
+    "threshold": 0.19,
+    "youden_index": 0.7741,
+    "best_youden": 0.7869,
+    "overfit_gap_auc": 0.0051
+  }
+}

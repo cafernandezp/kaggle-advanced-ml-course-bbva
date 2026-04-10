@@ -23,21 +23,6 @@ logger = logging.getLogger(__name__)
 RANDOM_STATE = 42
 
 
-def _prepare_for_mi(X: pd.DataFrame) -> pd.DataFrame:
-    """Convert a mixed-dtype DataFrame to numeric for MI / correlation computation.
-
-    - Category columns → integer codes (NaN → -1)
-    - Numeric columns → fillna(median)
-    """
-    out = pd.DataFrame(index=X.index)
-    for col in X.columns:
-        if hasattr(X[col], "cat"):
-            out[col] = X[col].cat.codes.astype(float)  # NaN → -1
-        else:
-            out[col] = X[col].fillna(X[col].median())
-    return out
-
-
 # ── Stage 1: Missing data filter ─────────────────────────────────────────────
 
 def drop_high_missing(
@@ -98,7 +83,7 @@ def drop_correlated_features(
 
     # Compute MI with target for tie-breaking
     mi_scores = pd.Series(
-        mutual_info_classif(_prepare_for_mi(X), y, random_state=RANDOM_STATE),
+        mutual_info_classif(X, y, random_state=RANDOM_STATE),
         index=X.columns,
     )
 
@@ -149,9 +134,8 @@ def select_top_mutual_information(
     Returns:
         list of top-K feature names ordered by MI (highest first)
     """
-    X_clean = _prepare_for_mi(X)
     mi = pd.Series(
-        mutual_info_classif(X_clean, y, random_state=RANDOM_STATE),
+        mutual_info_classif(X, y, random_state=RANDOM_STATE),
         index=X.columns,
     ).sort_values(ascending=False)
 
@@ -230,15 +214,14 @@ def build_feature_selection_report(
     """
     final_set = set(final_features)
 
-    # Compute MI scores for all original features
-    x_clean = _prepare_for_mi(x_original)
+    # Compute MI scores for all original features (input is already numeric & imputed)
     mi_scores = pd.Series(
-        mutual_info_classif(x_clean, y, random_state=RANDOM_STATE),
+        mutual_info_classif(x_original, y, random_state=RANDOM_STATE),
         index=x_original.columns,
     )
 
-    # Compute pairwise correlations on numeric columns (after MI prep)
-    corr_matrix = x_clean.corr(method=correlation_method).abs()
+    # Compute pairwise correlations
+    corr_matrix = x_original.corr(method=correlation_method).abs()
 
     rows = []
     for col in x_original.columns:
@@ -316,7 +299,7 @@ def _run_stage2(X_train, X_val, y_train, report, threshold, method):
 def _run_stage3(X_train, X_val, y_train, report, mi_top_k):
     """Stage 3: MI filter and update the report dict."""
     mi_scores = pd.Series(
-        mutual_info_classif(_prepare_for_mi(X_train), y_train, random_state=RANDOM_STATE),
+        mutual_info_classif(X_train, y_train, random_state=RANDOM_STATE),
         index=X_train.columns,
     )
     for f in X_train.columns:
