@@ -36,6 +36,11 @@ class ExperimentTracker:
         self._run_dir: Path | None = None
         self._data: dict = {}
 
+    @property
+    def run_dir(self) -> Path | None:
+        """Current run directory (available inside start_run context)."""
+        return self._run_dir
+
     @contextmanager
     def start_run(self, run_name: str | None = None):
         """Context manager for a single training run."""

@@ -9,6 +9,7 @@ import numpy as np
 import optuna
 import torch
 from sklearn.metrics import roc_auc_score
+from sklearn.model_selection import StratifiedKFold
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 
@@ -121,6 +122,37 @@ def objective(trial, X_train, y_train, X_val, y_val) -> float:
     val_auc = roc_auc_score(y_val, val_proba)
     overfit_gap = max(0.0, train_auc - val_auc)
     return val_auc - OVERFIT_PENALTY * overfit_gap
+
+
+def cv_objective(trial, X, y, n_splits=5) -> float:
+    """Optuna objective with Stratified K-Fold CV for MLP."""
+    torch.manual_seed(RANDOM_STATE)
+    params = get_mlp_params(trial)
+    skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=RANDOM_STATE)
+
+    y_arr = np.asarray(y)
+    val_aucs, train_aucs = [], []
+    for train_idx, val_idx in skf.split(X, y):
+        X_tr_t, y_tr_t = _to_tensors(X.iloc[train_idx], y_arr[train_idx])
+        X_vl_t, _ = _to_tensors(X.iloc[val_idx], y_arr[val_idx])
+
+        loader = DataLoader(
+            TensorDataset(X_tr_t, y_tr_t), batch_size=params["batch_size"], shuffle=True,
+        )
+        model = MLP(X_tr_t.shape[1], params["hidden_size"], params["n_layers"], params["dropout"])
+        model.to(DEVICE)
+        optimizer = torch.optim.Adam(model.parameters(), lr=params["lr"], weight_decay=params["weight_decay"])
+        criterion = nn.BCEWithLogitsLoss()
+
+        for _ in range(OPTUNA_EPOCHS):
+            _train_loop(model, optimizer, criterion, loader)
+
+        train_aucs.append(roc_auc_score(y_arr[train_idx], _predict_proba(model, X_tr_t)))
+        val_aucs.append(roc_auc_score(y_arr[val_idx], _predict_proba(model, X_vl_t)))
+
+    mean_val = np.mean(val_aucs)
+    mean_gap = np.mean([t - v for t, v in zip(train_aucs, val_aucs)])
+    return mean_val - OVERFIT_PENALTY * max(0.0, mean_gap)
 
 
 class MLPSklearnWrapper:

@@ -9,11 +9,14 @@ Output files:
     Per model:  reports/runs/<ts>_<model>/evaluation_results.csv  (3 rows)
     Global:     reports/runs/evaluation_summary.csv               (all models × splits)
 """
+import json
 import logging
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from sklearn.metrics import auc, roc_curve
 
 from src.metrics import perf_row, test_row
 
@@ -115,6 +118,39 @@ def evaluate_all(
     return pd.DataFrame(rows)
 
 
+def build_run_metrics(model_eval: pd.DataFrame, threshold_info: dict, threshold: float) -> dict:
+    """Build a flat metrics dict for run.json from a model's evaluation DataFrame.
+
+    Args:
+        model_eval: DataFrame with train/val/test rows (from evaluate_model)
+        threshold_info: dict from find_best_threshold (youden_index, best_youden)
+        threshold: the chosen threshold value
+
+    Returns:
+        dict with all metrics rounded to 4 decimals, ready for tracker.log_metrics()
+    """
+    val_row   = model_eval[model_eval["split"] == "val"].iloc[0]
+    train_row = model_eval[model_eval["split"] == "train"].iloc[0]
+    return {
+        "val_auc":         round(val_row["roc_auc"], 4),
+        "train_auc":       round(train_row["roc_auc"], 4),
+        "val_accuracy":    round(val_row["accuracy"], 4),
+        "train_accuracy":  round(train_row["accuracy"], 4),
+        "val_precision":   round(val_row["precision"], 4),
+        "train_precision": round(train_row["precision"], 4),
+        "val_recall":      round(val_row["recall"], 4),
+        "train_recall":    round(train_row["recall"], 4),
+        "val_ks":          round(val_row["ks_statistic"], 4),
+        "train_ks":        round(train_row["ks_statistic"], 4),
+        "val_gini":        round(val_row["gini"], 4),
+        "train_gini":      round(train_row["gini"], 4),
+        "threshold":       round(threshold, 4),
+        "youden_index":    round(threshold_info["youden_index"], 4),
+        "best_youden":     round(threshold_info["best_youden"], 4),
+        "overfit_gap_auc": round(train_row["roc_auc"] - val_row["roc_auc"], 4),
+    }
+
+
 def merge_evaluation_summary(runs_dir: Path = RUNS_DIR) -> pd.DataFrame:
     """Merge all per-model evaluation_results.csv into a single evaluation_summary.csv.
 
@@ -148,4 +184,70 @@ def merge_evaluation_summary(runs_dir: Path = RUNS_DIR) -> pd.DataFrame:
         len(files), out.name, merged["model"].nunique(),
         sorted(merged["model"].unique()),
     )
+
+    # Generate combined ROC from all historical runs
+    generate_combined_roc(runs_dir)
+
     return merged
+
+
+def generate_combined_roc(runs_dir: Path = RUNS_DIR) -> None:
+    """Generate a combined ROC curve from all historical runs.
+
+    Reads val_proba.csv + run.json from each run folder, loads y_val from
+    preprocessing, plots all models on one chart.
+
+    Standalone: make eval-summary (calls this after merging).
+    """
+    from src.preprocessing import load_splits  # pylint: disable=import-outside-toplevel
+
+    proba_files = sorted(runs_dir.glob("*/val_proba.csv"))
+    if not proba_files:
+        logger.info("No val_proba.csv found — skipping combined ROC")
+        return
+
+    # Load y_val once
+    _, _, _, y_val = load_splits()
+
+    # Collect latest run per model
+    model_probas: dict[str, np.ndarray] = {}
+    model_folders: dict[str, str] = {}
+    for f in proba_files:
+        run_json = f.parent / "run.json"
+        if not run_json.exists():
+            continue
+        run_data = json.loads(run_json.read_text())
+        model_name = run_data.get("params", {}).get("model", f.parent.name)
+        # Use the short name from the folder (e.g., "lgbm" from "20260409_103119_lgbm_optuna")
+        parts = f.parent.name.split("_")
+        short_name = parts[2] if len(parts) >= 3 else model_name
+        model_folders[short_name] = f.parent.name
+        model_probas[short_name] = pd.read_csv(f)["y_proba"].values
+
+    if not model_probas:
+        logger.info("No valid runs found for combined ROC")
+        return
+
+    colors = {"lgbm": "#4878d0", "xgb": "#ee854a", "mlp": "#6acc65",
+              "gp": "#d65f5f", "svm": "#956cb4"}
+
+    _, ax = plt.subplots(figsize=(8, 7))
+    for name, proba in sorted(model_probas.items()):
+        fpr, tpr, _ = roc_curve(y_val, proba)
+        auc_score = auc(fpr, tpr)
+        color = colors.get(name, None)
+        ax.plot(fpr, tpr, label=f"{name.upper()} (AUC={auc_score:.4f})", color=color, lw=2)
+
+    ax.plot([0, 1], [0, 1], "k--", lw=1, label="Random classifier")
+    ax.set_xlabel("False Positive Rate")
+    ax.set_ylabel("True Positive Rate")
+    ax.set_title("Combined ROC — all models (latest runs)")
+    ax.legend(loc="lower right")
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1.02)
+    plt.tight_layout()
+
+    out = runs_dir / "combined_roc.png"
+    plt.savefig(out, dpi=130)
+    plt.close()
+    logger.info("Combined ROC → %s (%d models)", out, len(model_probas))

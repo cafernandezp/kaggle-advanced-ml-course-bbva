@@ -11,7 +11,7 @@ RUN         ?=
 SUBMISSION  := $(if $(RUN),$(RUN)/submission.csv,data/processed/submission.csv)
 MSG         ?= auto submission
 
-.PHONY: init clean lint pipeline eval-summary submit help
+.PHONY: init clean clean-results lint pipeline eval-summary submit help
 
 help:
 	@echo ""
@@ -24,6 +24,7 @@ help:
 	@echo "  make submit                      — Submit best model to Kaggle"
 	@echo "  make submit RUN=<run_dir>        — Submit a specific model's run"
 	@echo "  make submit MSG=\"...\"            — Submit with a custom message"
+	@echo "  make clean-results               — Delete all model runs, logs, and mlruns"
 	@echo "  make clean                       — Remove __pycache__ and .pyc files"
 	@echo ""
 
@@ -51,6 +52,10 @@ submit:
 	@test -f $(SUBMISSION) || { echo "Error: $(SUBMISSION) not found. Run the pipeline first."; exit 1; }
 	kaggle competitions submit -c $(COMPETITION) -f $(SUBMISSION) -m "$(MSG)"
 	@echo "✓ Submitted $(SUBMISSION) — message: $(MSG)"
+
+clean-results:
+	@rm -rf reports/runs/*
+	@echo "✓ All runs, logs, and mlruns deleted from reports/runs/"
 
 clean:
 	@find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true

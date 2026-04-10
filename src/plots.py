@@ -15,7 +15,10 @@ logger = logging.getLogger(__name__)
 FIGURES_DIR = Path(__file__).parent.parent / "reports/figures"
 FIGURES_DIR.mkdir(parents=True, exist_ok=True)
 
-COLORS = {"lgbm": "#4878d0", "xgb": "#ee854a", "mlp": "#6acc65"}
+COLORS = {
+    "lgbm": "#4878d0", "xgb": "#ee854a", "mlp": "#6acc65",
+    "gp": "#d65f5f", "svm": "#956cb4",
+}
 
 
 def plot_roc_curves(
@@ -216,3 +219,75 @@ def plot_permutation_importance(
     plt.savefig(out, dpi=130)
     plt.close()
     logger.info("Permutation importance → %s", out)
+
+
+def plot_threshold_selection(
+    sweep: pd.DataFrame,
+    threshold_info: dict,
+    model_name: str,
+    save_path: Path | None = None,
+) -> None:
+    """Plot Accuracy vs Youden Index across thresholds, with selected threshold marked.
+
+    Args:
+        sweep: DataFrame from threshold_sweep() with columns: threshold, accuracy, youden_index
+        threshold_info: dict from find_best_threshold() with keys:
+            threshold, youden_index, best_youden, accuracy
+        model_name: model name for the title
+        save_path: where to save the plot (default: FIGURES_DIR)
+    """
+    thresholds = sweep["threshold"]
+    selected_t = threshold_info["threshold"]
+    best_youden = threshold_info["best_youden"]
+    tolerance = best_youden - threshold_info["youden_index"]
+
+    fig, ax1 = plt.subplots(figsize=(10, 5))
+
+    # Accuracy on left axis
+    color_acc = "#4878d0"
+    ax1.plot(thresholds, sweep["accuracy"], color=color_acc, lw=2, label="Accuracy")
+    ax1.set_xlabel("Threshold")
+    ax1.set_ylabel("Accuracy", color=color_acc)
+    ax1.tick_params(axis="y", labelcolor=color_acc)
+    ax1.set_xlim(thresholds.min(), thresholds.max())
+
+    # Youden Index on right axis
+    ax2 = ax1.twinx()
+    color_you = "#ee854a"
+    ax2.plot(thresholds, sweep["youden_index"], color=color_you, lw=2, linestyle="--", label="Youden Index")
+    ax2.set_ylabel("Youden Index", color=color_you)
+    ax2.tick_params(axis="y", labelcolor=color_you)
+
+    # Youden tolerance band (shaded)
+    youden_min = best_youden - max(tolerance, 0.02)  # show at least default tolerance
+    ax2.axhspan(youden_min, best_youden, alpha=0.12, color=color_you, label="Youden tolerance band")
+    ax2.axhline(best_youden, color=color_you, lw=0.8, linestyle=":", alpha=0.6)
+
+    # Selected threshold (vertical line)
+    ax1.axvline(selected_t, color="#2ca02c", lw=2.5, linestyle="-", alpha=0.8, label=f"Selected t={selected_t:.2f}")
+
+    # Mark selected point on both curves
+    sel_acc = sweep.loc[sweep["threshold"] == selected_t, "accuracy"].values
+    sel_you = sweep.loc[sweep["threshold"] == selected_t, "youden_index"].values
+    if len(sel_acc) > 0:
+        ax1.scatter([selected_t], sel_acc, color="#2ca02c", s=100, zorder=5, edgecolors="black")
+        ax2.scatter([selected_t], sel_you, color="#2ca02c", s=100, zorder=5, edgecolors="black", marker="D")
+
+    # Combined legend
+    lines1, labels1 = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    ax1.legend(lines1 + lines2, labels1 + labels2, loc="lower center", fontsize=9)
+
+    ax1.set_title(
+        f"{model_name.upper()} — Threshold Selection\n"
+        f"Selected t={selected_t:.2f}  |  Acc={sel_acc[0]:.4f}  |  Youden={sel_you[0]:.4f}"
+        if len(sel_acc) > 0 else f"{model_name.upper()} — Threshold Selection",
+        fontsize=11,
+    )
+    ax1.grid(axis="x", alpha=0.3)
+    fig.tight_layout()
+
+    out = save_path or FIGURES_DIR / f"{model_name}_threshold_selection.png"
+    fig.savefig(out, dpi=130)
+    plt.close(fig)
+    logger.info("Threshold selection plot → %s", out)

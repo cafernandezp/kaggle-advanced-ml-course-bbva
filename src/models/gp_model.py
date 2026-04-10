@@ -12,6 +12,7 @@ import logging
 import numpy as np
 import optuna
 from sklearn.gaussian_process import GaussianProcessClassifier
+from sklearn.model_selection import StratifiedKFold
 from sklearn.gaussian_process.kernels import (
     ConstantKernel,
     Matern,
@@ -118,6 +119,23 @@ def objective(trial, X_train, y_train, X_val, y_val) -> float:
 
 
 # ── Final training ───────────────────────────────────────────────────────────
+
+def cv_objective(trial, X, y, n_splits=5) -> float:
+    """Optuna objective with Stratified K-Fold CV for GP."""
+    params = get_gp_params(trial)
+    skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=RANDOM_STATE)
+    y_arr = np.asarray(y)
+
+    val_aucs, train_aucs = [], []
+    for train_idx, val_idx in skf.split(X, y):
+        model = _fit_gp(params, X.iloc[train_idx], y_arr[train_idx])
+        train_aucs.append(roc_auc_score(y_arr[train_idx], model.predict_proba(X.iloc[train_idx])[:, 1]))
+        val_aucs.append(roc_auc_score(y_arr[val_idx], model.predict_proba(X.iloc[val_idx])[:, 1]))
+
+    mean_val = np.mean(val_aucs)
+    mean_gap = np.mean([t - v for t, v in zip(train_aucs, val_aucs)])
+    return mean_val - OVERFIT_PENALTY * max(0.0, mean_gap)
+
 
 def train_final(params: dict, X_train, y_train, X_val, y_val):  # pylint: disable=unused-argument
     """Train with best params and return (model, loss_history).

@@ -1,4 +1,0 @@
-model,threshold,split,roc_auc,gini,ks_statistic,pr_auc,accuracy,precision,recall,f1,n_samples,n_positive,positive_rate
-lgbm,0.2,train,0.9613,0.9227,0.8077,0.7497,0.8997,0.532,0.8985,0.6683,22076,4192,0.1899
-lgbm,0.2,val,0.9512,0.9025,0.7959,0.6662,0.8909,0.5088,0.8889,0.6471,5519,1085,0.1966
-lgbm,0.2,test,,,,,,,,,13593,2625,0.1931

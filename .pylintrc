@@ -10,7 +10,7 @@ good-names = i,j,k,n,x,y,ax,lr,f
 
 [DESIGN]
 # ML training functions legitimately have many args and local variables
-max-args = 8
+max-args = 10
 max-positional-arguments = 8
 max-locals = 25
 

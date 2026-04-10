@@ -1,9 +1,11 @@
 """
-LightGBM model: Optuna objective + final training with loss history.
+LightGBM model: Optuna objective (single-split + CV) + final training with loss history.
 """
+import numpy as np
 import lightgbm as lgb
 import optuna
 from sklearn.metrics import roc_auc_score
+from sklearn.model_selection import StratifiedKFold
 
 RANDOM_STATE = 42
 OVERFIT_PENALTY = 0.5
@@ -46,6 +48,31 @@ def objective(trial, X_train, y_train, X_val, y_val) -> float:
     val_auc   = roc_auc_score(y_val,   model.predict_proba(X_val)[:, 1])
     overfit_gap = max(0.0, train_auc - val_auc)
     return val_auc - OVERFIT_PENALTY * overfit_gap
+
+
+def cv_objective(trial, X, y, n_splits=5) -> float:
+    """Optuna objective with Stratified K-Fold CV. More robust than single split."""
+    params = get_lgbm_params(trial)
+    skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=RANDOM_STATE)
+
+    val_aucs, train_aucs = [], []
+    for train_idx, val_idx in skf.split(X, y):
+        X_tr, X_vl = X.iloc[train_idx], X.iloc[val_idx]
+        y_tr, y_vl = y.iloc[train_idx], y.iloc[val_idx]
+
+        model = lgb.LGBMClassifier(**params)
+        model.fit(
+            X_tr, y_tr,
+            eval_set=[(X_vl, y_vl)],
+            callbacks=[lgb.early_stopping(EARLY_STOPPING, verbose=False), lgb.log_evaluation(-1)],
+        )
+        train_aucs.append(roc_auc_score(y_tr, model.predict_proba(X_tr)[:, 1]))
+        val_aucs.append(roc_auc_score(y_vl, model.predict_proba(X_vl)[:, 1]))
+
+    mean_val  = np.mean(val_aucs)
+    mean_gap  = np.mean([t - v for t, v in zip(train_aucs, val_aucs)])
+    overfit_gap = max(0.0, mean_gap)
+    return mean_val - OVERFIT_PENALTY * overfit_gap
 
 
 def train_final(params: dict, X_train, y_train, X_val, y_val):

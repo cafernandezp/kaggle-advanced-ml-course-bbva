@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
 
 ROOT = Path(__file__).parent.parent
 TRAIN_PATH = ROOT / "data/raw/train_set.csv"
@@ -107,6 +108,42 @@ def load_test_numeric() -> pd.DataFrame:
     """Processed test set with numeric (one-hot) features for MLP."""
     raw = pd.read_csv(TEST_PATH, index_col="Id")
     return build_features_numeric(raw)
+
+
+# ── Scaled numeric variants (for MLP, SVM, GP, and other scale-sensitive models) ──
+
+_scaler: StandardScaler | None = None  # pylint: disable=invalid-name
+
+
+def load_splits_scaled() -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
+    """Stratified train/val split with scaled numeric features.
+
+    Fits StandardScaler on train, transforms both train and val.
+    The fitted scaler is cached so load_test_scaled() uses the same transform.
+    """
+    global _scaler  # pylint: disable=global-statement
+    x_tr, x_vl, y_tr, y_vl = load_splits_numeric()
+    _scaler = StandardScaler()
+    x_tr_sc = pd.DataFrame(
+        _scaler.fit_transform(x_tr), index=x_tr.index, columns=x_tr.columns,
+    ).astype("float32")
+    x_vl_sc = pd.DataFrame(
+        _scaler.transform(x_vl), index=x_vl.index, columns=x_vl.columns,
+    ).astype("float32")
+    return x_tr_sc, x_vl_sc, y_tr, y_vl
+
+
+def load_test_scaled() -> pd.DataFrame:
+    """Processed test set with scaled numeric features.
+
+    Uses the scaler fitted by load_splits_scaled(). Must call load_splits_scaled() first.
+    """
+    if _scaler is None:
+        raise RuntimeError("Call load_splits_scaled() before load_test_scaled().")
+    X_test = load_test_numeric()
+    return pd.DataFrame(
+        _scaler.transform(X_test), index=X_test.index, columns=X_test.columns,
+    ).astype("float32")
 
 
 def expand_features_for_mlp(selected_features: list[str], X_num: pd.DataFrame) -> list[str]:

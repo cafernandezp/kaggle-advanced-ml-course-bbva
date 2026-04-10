@@ -32,26 +32,60 @@ unzip aprendizaje-automatico-avanzado-febrero-2026.zip -d data/raw/
 
 ## Pipeline overview
 
+```mermaid
+flowchart TD
+    A[raw data<br>data/raw/] --> B[EDA<br>src/eda.py]
+    B --> B1[reports/eda/<br>profiles, describe, missing]
+    B --> B2[reports/figures/<br>distributions, correlations]
+
+    A --> C[Preprocessing<br>src/preprocessing.py]
+    C --> C1[Tree splits<br>category dtypes, NaN]
+    C --> C2[Scaled splits<br>one-hot + imputed + StandardScaler]
+
+    C1 --> D[Feature Selection<br>src/feature_selection.py]
+    C2 --> D
+    D --> D1[1. Drop high missing > 50%]
+    D1 --> D2[2. Drop correlated features<br>Spearman > 0.9]
+    D2 --> D3[3. Top K by Mutual Information]
+    D3 --> D4[4. Top N by LightGBM PFI]
+    D4 --> E[feature_selection_report.csv]
+
+    D4 --> F{For each model}
+    F --> F1[Optuna HPO<br>30 trials, TPE sampler<br>single split or --cv 5-fold]
+    F1 --> F2[Train final model<br>with best params]
+    F2 --> F3[Threshold optimisation<br>Youden Index + accuracy tolerance]
+
+    F3 --> G[Evaluation<br>src/evaluations.py]
+    G --> G1[train / val / test metrics<br>AUC, KS, Gini, precision, recall, F1]
+
+    G1 --> H[Save artifacts]
+    H --> H1[Custom tracker<br>reports/runs/ts_model/]
+    H --> H2[MLflow<br>reports/runs/mlruns/]
+    H1 --> H3[run.json, evaluation_results.csv<br>submission.csv, model.pkl<br>threshold_sweep.csv, optuna_trials.csv]
+
+    G1 --> I[Plots<br>src/plots.py]
+    I --> I1[ROC curves, loss curves<br>feature importance, PFI]
+
+    G1 --> J[Best model by val AUC]
+    J --> K[data/processed/submission.csv]
+    K --> L[make submit → Kaggle]
+
+    H1 --> M[make eval-summary<br>evaluation_summary.csv]
 ```
-raw data
-   │
-   ▼
-src/eda.py            ← exploratory analysis → reports/eda/ + reports/figures/
-   │
-   ▼
-src/preprocessing.py  ← feature engineering (run to verify splits)
-   │
-   ▼
-src/pipeline.py       ← CLI orchestrator (Click)
-   ├─ src/train.py        ← PFI selection → Optuna HPO → model training
-   ├─ src/evaluations.py  ← metrics on train / val / test splits
-   ├─ src/metrics.py      ← threshold sweep, KS, Gini, Youden Index
-   ├─ src/plots.py        ← ROC, loss curves, feature importance, PFI
-   └─ src/tracking.py     ← run logging (JSON + artifacts)
-   │
-   ▼
-data/processed/submission.csv  ← upload to Kaggle
-```
+
+### Module responsibilities
+
+| Module | Responsibility |
+|---|---|
+| `src/pipeline.py` | CLI entry point (Click), orchestrates all stages |
+| `src/preprocessing.py` | Feature engineering, train/val splits, scaling |
+| `src/feature_selection.py` | 4-stage filtering: missing → correlation → MI → PFI |
+| `src/train.py` | Optuna HPO + final fit per model, returns standardised dicts |
+| `src/evaluations.py` | Metrics on any split, run.json metrics builder, evaluation summary merge |
+| `src/metrics.py` | Threshold sweep, Youden Index, KS statistic, Gini coefficient |
+| `src/plots.py` | ROC curves, loss curves, feature importance, PFI plots |
+| `src/tracking.py` | Custom JSON + CSV tracker, model/study/artifact saving |
+| `src/models/*.py` | Per-model: Optuna objective (single + CV), get_params, train_final |
 
 ---
 
@@ -100,24 +134,36 @@ uv run python -m src.pipeline [OPTIONS]
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `-m`, `--models` | choice (repeatable) | `lgbm xgb mlp gp` | Models to train. Repeat for each: `--models lgbm --models xgb` |
+| `-m`, `--models` | choice (repeatable) | all 5 models | Models to train: `--models lgbm --models xgb` |
 | `--n-trials` | integer | `30` | Number of Optuna HPO trials per model |
+| `--cv` | flag | off | Use Stratified 5-fold CV in Optuna instead of single train/val split |
 | `--report` | flag | off | Skip training; generate comparison report from previous runs |
 | `--help` | flag | — | Show help and exit |
 
-Available models: `lgbm` (LightGBM), `xgb` (XGBoost), `mlp` (MLP with dropout), `gp` (Gaussian Process with kernel selection).
+#### Available models
+
+| CLI name | Model | Module | Description |
+|---|---|---|---|
+| `lgbm` | LightGBM | `src/models/lgbm_model.py` | Gradient boosting con soporte nativo de categoricas. Early stopping en val logloss. |
+| `xgb` | XGBoost | `src/models/xgb_model.py` | Gradient boosting alternativo. `enable_categorical=True` para dtype category. |
+| `mlp` | MLP con Dropout | `src/models/mlp_model.py` | Red feed-forward PyTorch: `[Linear -> ReLU -> Dropout] x n_layers -> Linear(1)`. Early stopping (patience=10). |
+| `gp` | Gaussian Process | `src/models/gp_model.py` | `GaussianProcessClassifier` de sklearn con subsampling (GP es O(n^3)). Optuna selecciona el kernel (RBF, Matern, RationalQuadratic, etc.). |
+| `svm` | SVM | `src/models/svm_model.py` | `SVC` de sklearn con `probability=True` y subsampling. Optuna selecciona kernel (rbf, poly, sigmoid, linear), C, gamma. Requiere datos escalados. |
 
 #### Examples
 
 ```bash
-# All models with default settings (lgbm, xgb, mlp, gp)
+# All models with default settings (lgbm, xgb, mlp, gp, svm)
 uv run python -m src.pipeline
 
 # Only tree-based models
 uv run python -m src.pipeline --models lgbm --models xgb
 
-# Add GP model to an existing set of runs (incremental)
-uv run python -m src.pipeline --models gp
+# Add SVM model to an existing set of runs (incremental)
+uv run python -m src.pipeline --models svm
+
+# With Stratified 5-fold CV in Optuna (more robust, ~5x slower)
+uv run python -m src.pipeline --cv --models lgbm --models xgb
 
 # Single model with more Optuna trials
 uv run python -m src.pipeline --models lgbm --n-trials 50
@@ -128,10 +174,12 @@ uv run python -m src.pipeline --report
 # Shorthand via Makefile
 make pipeline                     # all models
 make pipeline MODELS="lgbm xgb"  # subset
-make pipeline MODELS="gp"        # add GP incrementally
+make pipeline MODELS="svm"       # add SVM incrementally
 ```
 
 Running a subset of models does **not** overwrite previous runs. Each run gets its own timestamped folder. The global `evaluation_summary.csv` is rebuilt from all existing run folders after each pipeline run.
+
+> **`--cv` flag**: when enabled, Optuna evaluates each trial with Stratified 5-fold CV instead of the single train/val split. This reduces overfitting to the validation set but multiplies training time by ~5x. Recommended for final runs. See [`docs/optuna_objective.md`](docs/optuna_objective.md) for details on the objective design.
 
 #### Inputs / outputs
 
@@ -187,6 +235,26 @@ uv run python -m src.pipeline --report
 |---|---|
 | **Input** | `reports/runs/*/run.json` |
 | **Output** | `reports/runs/comparison.csv`, `reports/runs/comparison.png` |
+
+### Stage 5b — MLflow UI
+
+**Goal**: Visually compare runs, inspect model artifacts, and browse metrics across experiments.
+
+Every pipeline run logs params, metrics, and the trained model to MLflow in parallel with the custom tracker. To launch the MLflow UI:
+
+```bash
+uv run mlflow ui --backend-store-uri reports/runs/mlruns
+```
+
+Then open [http://127.0.0.1:5000](http://127.0.0.1:5000) in your browser.
+
+| | Detail |
+|---|---|
+| **Tracking data** | `reports/runs/mlruns/` (auto-created by the pipeline) |
+| **Experiment name** | `banking-marketing-classification` |
+| **What you can do** | Compare metrics across runs, inspect logged params, download model artifacts, filter/sort by any metric |
+
+> MLflow runs in parallel with the custom tracker — if MLflow is unavailable, all structured CSVs and JSONs in `reports/runs/` are still saved.
 
 ### Stage 6 — Submit to Kaggle
 
@@ -324,6 +392,20 @@ Requires NaN-free input (handled by `build_features_numeric` via median imputati
 
 ---
 
+### SVM (`src/models/svm_model.py`)
+
+Uses `sklearn.svm.SVC` with `probability=True` and training-set subsampling (SVM is O(n^2)–O(n^3)). Requires scaled input (handled by `load_splits_scaled()` in preprocessing).
+
+| Parameter | Type | Options / Range |
+|---|---|---|
+| `kernel` | categorical | `rbf`, `poly`, `sigmoid`, `linear` |
+| `C` | float log | 1e-2 – 100 |
+| `gamma` | categorical | `scale`, `auto` (for rbf/poly/sigmoid kernels) |
+| `degree` | int | 2 – 5 (poly kernel only) |
+| `n_train_samples` | int | 1000 – 3000 (step 500) |
+
+---
+
 ## Plots generated (`reports/figures/`)
 
 ### EDA plots (from `src/eda`)
@@ -379,3 +461,14 @@ Id,subscribed
 ```
 
 The submission from the best model by validation AUC is saved automatically to `data/processed/submission.csv`.
+
+---
+
+## Documentation
+
+Detailed design documents are in the `docs/` folder:
+
+| Document | Description |
+|---|---|
+| [`docs/feature_selection.md`](docs/feature_selection.md) | Feature selection pipeline: stages, data state at each step, report format |
+| [`docs/optuna_objective.md`](docs/optuna_objective.md) | Why single objective vs multi-objective, penalty weight tuning, CV interaction |
