@@ -1,22 +1,22 @@
-feature,missing_pct,selected
-duration,0.0,True
-day_of_week,0.0,True
-age,0.0,True
-euribor3m,0.0,True
-cons.conf.idx,0.0,True
-cons.price.idx,0.0,True
-campaign,0.0,True
-poutcome,0.0,True
-was_contacted,0.0,True
-month,0.0,True
-contact,0.0,True
-loan,0.0,True
-housing,0.0,True
-default,0.0,True
-education,4.32,True
-marital,0.0,False
-pdays,96.47,False
-previous,0.0,False
-emp.var.rate,0.0,False
-nr.employed,0.0,False
-job,0.0,False
+feature,missing_pct,mi_score,max_corr_with_other,max_corr_partner,stage1_missing,stage2_correlation,stage3_mi,stage4_pfi,dropped_at,drop_reason,selected
+duration,0.0,0.0767,0.0968,nr.employed,True,True,True,True,selected,,True
+euribor3m,0.0,0.0717,0.9385,emp.var.rate,True,True,True,True,selected,,True
+cons.price.idx,0.0,0.0675,0.6597,emp.var.rate,True,True,True,True,selected,,True
+cons.conf.idx,0.0,0.0671,0.2605,contact,True,True,True,True,selected,,True
+poutcome,0.0,0.0324,0.5126,previous,True,True,True,True,selected,,True
+month,0.0,0.0303,0.4722,euribor3m,True,True,True,True,selected,,True
+was_contacted,0.0,0.029,0.5018,previous,True,True,True,True,selected,,True
+age,0.0,0.0138,0.4367,marital,True,True,True,True,selected,,True
+contact,0.0,0.0124,0.6568,cons.price.idx,True,True,True,True,selected,,True
+education,4.32,0.0042,0.2144,default,True,True,True,True,selected,,True
+default,0.0,0.0038,0.2144,education,True,True,True,True,selected,,True
+campaign,0.0,0.0018,0.1577,emp.var.rate,True,True,True,True,selected,,True
+loan,0.0,0.0009,0.0374,housing,True,True,True,True,selected,,True
+housing,0.0,0.0005,0.0834,contact,True,True,True,True,selected,,True
+day_of_week,0.0,0.0,0.0648,campaign,True,True,True,True,selected,,True
+nr.employed,0.0,0.0634,0.9459,emp.var.rate,True,False,False,False,stage2_correlation,spearman corr=0.946 with emp.var.rate,False
+emp.var.rate,0.0,0.0545,0.9459,nr.employed,True,False,False,False,stage2_correlation,spearman corr=0.946 with nr.employed,False
+pdays,96.47,0.0271,0.2654,was_contacted,False,False,False,False,stage1_missing,96.47% missing,False
+previous,0.0,0.018,0.5126,poutcome,True,True,True,False,stage4_pfi,pfi below top-n,False
+job,0.0,0.0083,0.0366,cons.conf.idx,True,True,True,False,stage4_pfi,pfi below top-n,False
+marital,0.0,0.0022,0.4367,age,True,True,True,False,stage4_pfi,pfi below top-n,False

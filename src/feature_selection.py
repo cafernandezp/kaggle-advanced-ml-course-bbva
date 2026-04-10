@@ -205,27 +205,90 @@ def select_top_features_lgbm_pfi_based(
 # ── Full pipeline ─────────────────────────────────────────────────────────────
 
 def build_feature_selection_report(
-    X_original: pd.DataFrame,
+    x_original: pd.DataFrame,
+    y: pd.Series,
+    survivors_per_stage: dict[str, list[str]],
     final_features: list[str],
+    *,
+    correlation_method: str = "spearman",
 ) -> pd.DataFrame:
-    """Build a summary report comparing original features vs final selection.
+    """Build a per-feature report with the verdict and reason at each stage.
 
     Args:
-        X_original: the full feature DataFrame before any selection
-        final_features: list of feature names that survived all stages
+        x_original: full feature DataFrame before any selection
+        y: target series (used to compute MI scores for the report)
+        survivors_per_stage: {stage_name: [features that survived this stage]}
+            keys: "stage1_missing", "stage2_correlation", "stage3_mi", "stage4_pfi"
+        final_features: final selected feature list
+        correlation_method: only used to label the corr column
 
     Returns:
-        DataFrame with columns: feature, missing_pct, selected
+        DataFrame with lower-case columns:
+            feature, missing_pct, mi_score, max_corr_with_other, max_corr_partner,
+            stage1_missing, stage2_correlation, stage3_mi, stage4_pfi,
+            dropped_at, drop_reason, selected
     """
     final_set = set(final_features)
+
+    # Compute MI scores for all original features
+    x_clean = _prepare_for_mi(x_original)
+    mi_scores = pd.Series(
+        mutual_info_classif(x_clean, y, random_state=RANDOM_STATE),
+        index=x_original.columns,
+    )
+
+    # Compute pairwise correlations on numeric columns (after MI prep)
+    corr_matrix = x_clean.corr(method=correlation_method).abs()
+
     rows = []
-    for col in X_original.columns:
+    for col in x_original.columns:
+        # Find max correlation with any other feature
+        if col in corr_matrix.columns:
+            other_corrs = corr_matrix[col].drop(col)
+            max_corr = float(other_corrs.max()) if len(other_corrs) > 0 else 0.0
+            partner = other_corrs.idxmax() if len(other_corrs) > 0 else ""
+        else:
+            max_corr, partner = 0.0, ""
+
+        in_s1 = col in set(survivors_per_stage.get("stage1_missing", []))
+        in_s2 = col in set(survivors_per_stage.get("stage2_correlation", []))
+        in_s3 = col in set(survivors_per_stage.get("stage3_mi", []))
+        in_s4 = col in set(survivors_per_stage.get("stage4_pfi", []))
+
+        # Determine where it was dropped
+        miss_pct = round(x_original[col].isnull().mean() * 100, 2)
+        if not in_s1:
+            dropped_at, reason = "stage1_missing", f"{miss_pct}% missing"
+        elif not in_s2:
+            dropped_at = "stage2_correlation"
+            reason = f"{correlation_method} corr={max_corr:.3f} with {partner}"
+        elif not in_s3:
+            dropped_at, reason = "stage3_mi", f"mi={mi_scores[col]:.4f} (below top-k)"
+        elif not in_s4:
+            dropped_at, reason = "stage4_pfi", "pfi below top-n"
+        else:
+            dropped_at, reason = "selected", ""
+
         rows.append({
-            "feature":     col,
-            "missing_pct": round(X_original[col].isnull().mean() * 100, 2),
-            "selected":    col in final_set,
+            "feature":              col,
+            "missing_pct":          round(x_original[col].isnull().mean() * 100, 2),
+            "mi_score":             round(float(mi_scores[col]), 4),
+            "max_corr_with_other":  round(max_corr, 4),
+            "max_corr_partner":     partner,
+            "stage1_missing":       in_s1,
+            "stage2_correlation":   in_s2,
+            "stage3_mi":            in_s3,
+            "stage4_pfi":           in_s4,
+            "dropped_at":           dropped_at,
+            "drop_reason":          reason,
+            "selected":             col in final_set,
         })
-    return pd.DataFrame(rows).sort_values("selected", ascending=False).reset_index(drop=True)
+
+    return (
+        pd.DataFrame(rows)
+        .sort_values(["selected", "mi_score"], ascending=[False, False])
+        .reset_index(drop=True)
+    )
 
 
 def _run_stage2(X_train, X_val, y_train, report, threshold, method):

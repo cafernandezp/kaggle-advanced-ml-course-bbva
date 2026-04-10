@@ -264,7 +264,10 @@ def plot_threshold_selection(
     ax2.axhline(best_youden, color=color_you, lw=0.8, linestyle=":", alpha=0.6)
 
     # Selected threshold (vertical line)
-    ax1.axvline(selected_t, color="#2ca02c", lw=2.5, linestyle="-", alpha=0.8, label=f"Selected t={selected_t:.2f}")
+    ax1.axvline(
+        selected_t, color="#2ca02c", lw=2.5, linestyle="-",
+        alpha=0.8, label=f"Selected t={selected_t:.2f}",
+    )
 
     # Mark selected point on both curves
     sel_acc = sweep.loc[sweep["threshold"] == selected_t, "accuracy"].values

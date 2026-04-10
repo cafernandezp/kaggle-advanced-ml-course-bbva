@@ -125,9 +125,11 @@ def apply_feature_selection(data: PipelineData) -> PipelineData:
     y_train = data.y_train
     n_start = X_train.shape[1]
     logger.info("Feature selection: starting with %d features", n_start)
+    survivors: dict[str, list[str]] = {}
 
     # Stage 1: drop features with too many missing values
     kept = drop_high_missing(X_train, threshold=0.5)
+    survivors["stage1_missing"] = kept.copy()
     X_train, X_val = X_train[kept], X_val[kept]
 
     # Stage 2: drop highly correlated features (Spearman, keep the one with higher MI)
@@ -137,20 +139,25 @@ def apply_feature_selection(data: PipelineData) -> PipelineData:
         non_numeric = [c for c in X_train.columns if c not in numeric_cols]
         kept = non_numeric + kept_num
         X_train, X_val = X_train[kept], X_val[kept]
+    survivors["stage2_correlation"] = list(X_train.columns)
 
     # Stage 3: keep top K features by Mutual Information with target
     kept = select_top_mutual_information(X_train, y_train, top_k=20)
+    survivors["stage3_mi"] = kept.copy()
     X_train, X_val = X_train[kept], X_val[kept]
 
     # Stage 4: keep top N features by LightGBM PFI
     top_features = select_top_features_lgbm_pfi_based(X_train, y_train, X_val, data.y_val, top_n=15)
+    survivors["stage4_pfi"] = top_features.copy()
     X_train, X_val = X_train[top_features], X_val[top_features]
 
     logger.info("Feature selection: %d → %d features", n_start, len(top_features))
     logger.info("Final features: %s", top_features)
 
-    # Build and save report
-    fs_report = build_feature_selection_report(data.X_train, top_features)
+    # Build and save the per-feature report (with stage-by-stage verdicts)
+    fs_report = build_feature_selection_report(
+        data.X_train, data.y_train, survivors, top_features,
+    )
     fs_report.to_csv(RUNS_DIR / "feature_selection_report.csv", index=False)
     logger.info("Feature selection report → %s", RUNS_DIR / "feature_selection_report.csv")
 

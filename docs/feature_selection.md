@@ -1,6 +1,6 @@
 # Feature Selection Pipeline
 
-> Last updated: 09-04-2026
+> Last updated: 10-04-2026
 
 ## Overview
 
@@ -74,16 +74,44 @@ raw CSV (21 features)
 
 ## Report format
 
-Each pipeline run saves `reports/runs/feature_selection_report.csv` with columns:
+Each pipeline run saves `reports/runs/feature_selection_report.csv`. All column names
+are lower-case for consistency.
 
-| Column | Description |
-|---|---|
-| `feature` | Original feature name |
-| `stage_1_missing` | `kept` or `dropped (X% missing)` |
-| `stage_2_correlation` | `kept` or `dropped (corr=0.95 with <other_feature>)` |
-| `stage_3_mi` | `kept (MI=0.1234)` or `dropped (MI=0.0012, rank 25/21)` |
-| `stage_4_pfi` | `kept (PFI=0.0456)` or `dropped (PFI=0.0001, rank 18/20)` |
-| `final_status` | `selected` or `dropped_stage_N` |
+| Column | Type | Description |
+|---|---|---|
+| `feature` | str | Original feature name |
+| `missing_pct` | float | Percentage of missing values in the train set |
+| `mi_score` | float | Mutual Information with the target (computed on the original feature set) |
+| `max_corr_with_other` | float | Maximum absolute Spearman correlation with any other feature |
+| `max_corr_partner` | str | Name of the feature with which `max_corr_with_other` was achieved |
+| `stage1_missing` | bool | `True` if the feature passed stage 1 (missing-rate filter) |
+| `stage2_correlation` | bool | `True` if it passed stage 2 (correlation redundancy filter) |
+| `stage3_mi` | bool | `True` if it passed stage 3 (top-K by MI) |
+| `stage4_pfi` | bool | `True` if it passed stage 4 (top-N by LightGBM PFI) — final stage |
+| `dropped_at` | str | First stage where it was dropped, or `selected` if it survived all stages |
+| `drop_reason` | str | Human-readable explanation, e.g. `spearman corr=0.95 with euribor3m` |
+| `selected` | bool | `True` if the feature is in the final selection (= passed all 4 stages) |
+
+### Example rows
+
+```
+feature       missing_pct  mi_score  max_corr_with_other  max_corr_partner  stage1_missing  stage2_correlation  stage3_mi  stage4_pfi  dropped_at         drop_reason                                  selected
+duration      0.00         0.0823    0.142                campaign          True            True                True       True        selected                                                        True
+nr.employed   0.00         0.0651    0.971                euribor3m         True            False               False      False       stage2_correlation spearman corr=0.971 with euribor3m            False
+pdays         96.47        0.0042    0.118                previous          False           False               False      False       stage1_missing     96.47% missing                                False
+job           0.00         0.0089    0.087                marital           True            True                False      False       stage3_mi          mi=0.0089 (below top-k)                       False
+```
+
+### How to read the report
+
+- **`dropped_at = selected`**: feature survived all stages and is in the final model
+- **`dropped_at = stage1_missing`**: too many missing values (e.g. `pdays` with 96% NaN)
+- **`dropped_at = stage2_correlation`**: redundant with another feature; check `drop_reason` for the partner
+- **`dropped_at = stage3_mi`**: low mutual information with the target (kept only top-K)
+- **`dropped_at = stage4_pfi`**: ranked low in LightGBM permutation importance (kept only top-N)
+
+The boolean stage columns (`stage1_*` … `stage4_*`) let you reproduce the cascade:
+a feature reaches stage N only if it was `True` in all previous stages.
 
 ---
 

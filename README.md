@@ -44,10 +44,10 @@ flowchart TD
 
     C1 --> D[Feature Selection<br>src/feature_selection.py]
     C2 --> D
-    D --> D1[1. Drop high missing > 50%]
-    D1 --> D2[2. Drop correlated features<br>Spearman > 0.9]
-    D2 --> D3[3. Top K by Mutual Information]
-    D3 --> D4[4. Top N by LightGBM PFI]
+    D --> D1["1. Drop high missing &gt; 50%"]
+    D1 --> D2["2. Drop correlated features<br>Spearman &gt; 0.9"]
+    D2 --> D3["3. Top K by Mutual Information"]
+    D3 --> D4["4. Top N by LightGBM PFI"]
     D4 --> E[feature_selection_report.csv]
 
     D4 --> F{For each model}
