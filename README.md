@@ -171,10 +171,15 @@ uv run python -m src.pipeline --models lgbm --n-trials 50
 # Compare all previous runs (no training)
 uv run python -m src.pipeline --report
 
-# Shorthand via Makefile
-make pipeline                     # all models
-make pipeline MODELS="lgbm xgb"  # subset
-make pipeline MODELS="svm"       # add SVM incrementally
+# Shorthand via Makefile — accepts a space-separated array of model names
+make pipeline                              # all models (default)
+make pipeline MODELS="lgbm"                # only one model
+make pipeline MODELS="lgbm xgb"            # tree models only
+make pipeline MODELS="lgbm xgb gp svm"     # everything except MLP
+make pipeline MODELS="gp svm mlp"          # only scale-sensitive models
+make pipeline MODELS="svm"                 # add SVM incrementally (keeps previous runs)
+
+# Allowed model names: lgbm, xgb, mlp, gp, svm
 ```
 
 Running a subset of models does **not** overwrite previous runs. Each run gets its own timestamped folder. The global `evaluation_summary.csv` is rebuilt from all existing run folders after each pipeline run.
@@ -186,7 +191,8 @@ Running a subset of models does **not** overwrite previous runs. Each run gets i
 | | Detail |
 |---|---|
 | **Input** | `data/raw/train_set.csv`, `data/raw/test_set.csv` |
-| **Output (per model)** | `reports/runs/<ts>_<model>/` — `run.json`, `evaluation_results.csv` (train/val/test metrics), `submission.csv`, `threshold_sweep.csv`, `model.pkl`, `optuna_trials.csv`, `optuna_study.pkl`, `feature_importance_pct.csv` (tree models) |
+| **Output (preprocessing)** | `reports/runs/preprocessing/` — `imputer.pkl`, `scaler.pkl`, `numeric_columns.json`, `scaled_columns.json` (fitted on train, reused by `src/predict.py`) |
+| **Output (per model)** | `reports/runs/<ts>_<model>/` — `run.json`, `evaluation_results.csv`, `submission.csv`, `threshold_sweep.csv`, `model.pkl`, `features.json`, `optuna_trials.csv`, `optuna_study.pkl`, `threshold_selection.png`, `reliability_diagram.png`, `training_curves.png` (tree), `training_history.csv`, `feature_importance.png` / `feature_importance_pct.csv` (tree) |
 | **Output (global)** | `reports/runs/evaluation_summary.csv` — all models × all splits in one table |
 | **Output (plots)** | `reports/figures/` — `roc_curves.png`, `loss_curves.png`, `feature_importance_pct.png`, `permutation_importance.png` |
 | **Output (log)** | `reports/runs/pipeline_<ts>.log` — full pipeline log with timestamps |
@@ -197,14 +203,34 @@ Running a subset of models does **not** overwrite previous runs. Each run gets i
 
 | Module | Responsibility |
 |---|---|
+| `src/config.py` | Single source of truth for project-specific settings (experiment name, id/target columns, feature-selection thresholds). Edit this file to adapt to a new project. |
 | `src/pipeline.py` | CLI entry point, orchestrates all stages |
+| `src/preprocessing.py` | Feature engineering, train/val split, NaN imputation, StandardScaler fit-on-train |
+| `src/feature_selection.py` | 4-stage sequential filtering: missing → correlation → MI → PFI |
 | `src/train.py` | Pure training functions — HPO + final fit, returns standardised result dicts |
 | `src/evaluations.py` | Compute metrics on any split (train / val / test) |
 | `src/metrics.py` | Threshold sweep, Youden Index, KS statistic, Gini coefficient |
-| `src/plots.py` | ROC curves, loss curves, feature importance, PFI |
+| `src/plots.py` | ROC curves, loss curves, feature importance, PFI, per-model training curves |
 | `src/tracking.py` | Per-run JSON logging, model/study/DataFrame artifact saving |
 
 Models are saved as `model.pkl` per run for re-evaluation without retraining.
+
+#### Adapting to a new project
+
+All business-specific settings live in [`src/config.py`](src/config.py). To repurpose this pipeline for a different dataset, edit the `DEFAULT_CONFIG` block only:
+
+```python
+# src/config.py
+DEFAULT_CONFIG = PipelineConfig(
+    experiment="my-new-competition",   # MLflow experiment name
+    id_col="ID",                        # name of the index column in the raw CSVs
+    target_col="label",                 # name of the target column in the train set
+    top_n_features=20,                  # optional: bump feature count
+    missing_threshold=0.3,              # optional: stricter missing-value filter
+)
+```
+
+Everything else (pipeline stages, training functions, plots, trackers) runs unchanged because all project-specific references read from `CONFIG.*`.
 
 ### Stage 4 — Merge evaluation summary
 
@@ -255,6 +281,38 @@ Then open [http://127.0.0.1:5000](http://127.0.0.1:5000) in your browser.
 | **What you can do** | Compare metrics across runs, inspect logged params, download model artifacts, filter/sort by any metric |
 
 > MLflow runs in parallel with the custom tracker — if MLflow is unavailable, all structured CSVs and JSONs in `reports/runs/` are still saved.
+
+### Stage 5c — Predict on new data
+
+**Goal**: Score a new CSV using a previously trained model run. Reuses the exact same
+preprocessing (imputer + scaler + feature selection) that produced the model.
+
+```bash
+# Score an arbitrary CSV using one trained run
+uv run python -m src.predict \
+    --run reports/runs/20260410_220413_xgb_optuna \
+    --input data/raw/test_set.csv \
+    --output data/processed/xgb_predictions.csv
+
+# Override the decision threshold if needed
+uv run python -m src.predict --run ... --input ... --output ... --threshold 0.25
+
+# Shorthand via Makefile
+make predict RUN=reports/runs/20260410_220413_xgb_optuna \
+             INPUT=data/raw/test_set.csv \
+             OUTPUT=data/processed/xgb_predictions.csv
+```
+
+| | Detail |
+|---|---|
+| **Input (run)** | `reports/runs/<ts>_<model>_optuna/` — must contain `model.pkl`, `run.json`, `features.json` |
+| **Input (preprocessing)** | `reports/runs/preprocessing/` — must contain `imputer.pkl`, `scaler.pkl`, column-order JSONs |
+| **Input (data)** | A CSV with the same schema as `data/raw/train_set.csv` minus the target column |
+| **Output** | CSV with columns: `<id_col>, <target_col>, y_proba` |
+
+The predict command is idempotent: running it on `test_set.csv` for an existing run
+should produce the same binary predictions as the `submission.csv` saved in that run
+folder (only `y_proba` is added).
 
 ### Stage 6 — Submit to Kaggle
 
@@ -473,4 +531,5 @@ Detailed design documents are in the `docs/` folder:
 | [`docs/data-flow-schema.md`](docs/data-flow-schema.md) | End-to-end data flow: Mermaid diagram + numbered stage table with inputs, outputs and files written |
 | [`docs/feature_selection.md`](docs/feature_selection.md) | Feature selection pipeline: stages, data state at each step, report format |
 | [`docs/optuna_objective.md`](docs/optuna_objective.md) | Why single objective vs multi-objective, penalty weight tuning, CV interaction |
+| [`docs/calibration.md`](docs/calibration.md) | Probability calibration: what Brier/ECE/reliability measure, when to re-calibrate, how to apply Platt/isotonic |
 | [`docs/templates/data-flow-template.md`](docs/templates/data-flow-template.md) | Reusable template — copy to a new project to document its data flow in the same format |

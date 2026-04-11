@@ -17,7 +17,7 @@ perf_row / test_row
 import numpy as np
 import pandas as pd
 from sklearn.metrics import (
-    accuracy_score, average_precision_score, confusion_matrix,
+    accuracy_score, average_precision_score, brier_score_loss, confusion_matrix,
     f1_score, precision_score, recall_score, roc_auc_score, roc_curve,
 )
 
@@ -26,6 +26,37 @@ THRESHOLDS = np.round(np.arange(0.10, 0.91, 0.01), 2)
 
 # Default Youden tolerance for threshold selection
 DEFAULT_TOLERANCE = 0.02
+
+
+# ── Calibration metrics (probability quality, threshold-free) ───────────────
+
+def expected_calibration_error(y_true, y_proba: np.ndarray, n_bins: int = 10) -> float:
+    """Expected Calibration Error (ECE) — weighted gap between confidence and accuracy.
+
+    For each bin of predicted probabilities, compute |accuracy − mean_confidence|
+    weighted by the fraction of samples in that bin. Lower is better; 0 = perfect.
+
+    Args:
+        y_true: binary ground-truth labels (0/1)
+        y_proba: predicted probabilities for the positive class
+        n_bins: number of equal-width bins over [0, 1]
+    """
+    y_true = np.asarray(y_true)
+    y_proba = np.asarray(y_proba)
+    bin_edges = np.linspace(0.0, 1.0, n_bins + 1)
+    bin_ids = np.digitize(y_proba, bin_edges[1:-1])  # indices in [0, n_bins-1]
+
+    ece = 0.0
+    n_total = len(y_proba)
+    for b in range(n_bins):
+        mask = bin_ids == b
+        if not mask.any():
+            continue
+        bin_conf = float(y_proba[mask].mean())
+        bin_acc  = float(y_true[mask].mean())
+        bin_weight = mask.sum() / n_total
+        ece += bin_weight * abs(bin_conf - bin_acc)
+    return float(ece)
 
 
 # ── KS & Gini (probability-based, threshold-free) ────────────────────────────
@@ -135,7 +166,7 @@ def perf_row(split: str, y_true, y_proba: np.ndarray, y_pred: np.ndarray) -> dic
     """Return a metrics dict for one labelled split (train or val).
 
     Includes ROC-AUC, PR-AUC, accuracy, precision, recall, F1,
-    KS statistic, and Gini coefficient.
+    KS statistic, Gini coefficient, Brier score, and Expected Calibration Error.
     """
     auc_val = roc_auc_score(y_true, y_proba)
     return {
@@ -144,6 +175,8 @@ def perf_row(split: str, y_true, y_proba: np.ndarray, y_pred: np.ndarray) -> dic
         "gini":          round(2.0 * auc_val - 1.0, 4),
         "ks_statistic":  round(ks_statistic(y_true, y_proba), 4),
         "pr_auc":        round(average_precision_score(y_true, y_proba), 4),
+        "brier_score":   round(brier_score_loss(y_true, y_proba), 4),
+        "ece":           round(expected_calibration_error(y_true, y_proba), 4),
         "accuracy":      round(accuracy_score(y_true, y_pred), 4),
         "precision":     round(precision_score(y_true, y_pred, zero_division=0), 4),
         "recall":        round(recall_score(y_true, y_pred, zero_division=0), 4),
@@ -162,6 +195,8 @@ def test_row(y_pred: np.ndarray) -> dict:
         "gini":          None,
         "ks_statistic":  None,
         "pr_auc":        None,
+        "brier_score":   None,
+        "ece":           None,
         "accuracy":      None,
         "precision":     None,
         "recall":        None,

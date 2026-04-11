@@ -10,7 +10,9 @@ Stages (applied in order):
 Each function is independent and reusable from notebooks.
 run_feature_selection_pipeline() chains them all with configurable thresholds.
 """
+import json
 import logging
+from pathlib import Path
 
 import lightgbm as lgb
 import numpy as np
@@ -21,6 +23,35 @@ from sklearn.inspection import permutation_importance
 logger = logging.getLogger(__name__)
 
 RANDOM_STATE = 42
+FEATURE_SELECTION_DIR_NAME = "feature_selection"
+
+
+def save_feature_selection(
+    top_features: list[str],
+    mlp_top_cols: list[str],
+    out_dir: Path,
+) -> None:
+    """Persist the selected feature lists so downstream stages can read them.
+
+    Writes:
+        out_dir/top_features.json  — tree-variant feature names (original columns)
+        out_dir/mlp_top_cols.json  — one-hot / scaled variant column names
+    """
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "top_features.json").write_text(json.dumps(top_features, indent=2))
+    (out_dir / "mlp_top_cols.json").write_text(json.dumps(mlp_top_cols, indent=2))
+
+
+def load_feature_selection(in_dir: Path) -> tuple[list[str], list[str]]:
+    """Load the selected feature lists from disk. Returns (top_features, mlp_top_cols)."""
+    if not in_dir.exists():
+        raise FileNotFoundError(
+            f"Feature selection output not found at {in_dir}. "
+            f"Run `make pipeline-feature-select` first."
+        )
+    top_features = json.loads((in_dir / "top_features.json").read_text())
+    mlp_top_cols = json.loads((in_dir / "mlp_top_cols.json").read_text())
+    return top_features, mlp_top_cols
 
 
 # ── Stage 1: Missing data filter ─────────────────────────────────────────────

@@ -11,6 +11,11 @@ RANDOM_STATE = 42
 OVERFIT_PENALTY = 0.5
 EARLY_STOPPING = 50
 
+# NOTE: XGBoost uses the LAST metric in the list for early stopping.
+# "auc" is last because AUC is our primary optimization metric;
+# "logloss" and "error" are tracked for monitoring only.
+EVAL_METRICS = ["logloss", "error", "auc"]
+
 
 def get_xgb_params(trial: optuna.Trial) -> dict:
     """Return Optuna-suggested XGBoost hyperparameters merged with fixed params."""
@@ -25,7 +30,7 @@ def get_xgb_params(trial: optuna.Trial) -> dict:
         "reg_lambda":       trial.suggest_float(  "reg_lambda",      1e-8, 10.0, log=True),
         # fixed
         "objective": "binary:logistic",
-        "eval_metric": "logloss",
+        "eval_metric": EVAL_METRICS,   # multiple metrics; last one (auc) triggers early stopping
         "enable_categorical": True,   # required for pandas category dtype
         "seed": RANDOM_STATE,
         "n_jobs": -1,
@@ -68,16 +73,19 @@ def cv_objective(trial, X, y, n_splits=5) -> float:
 
 
 def train_final(params: dict, X_train, y_train, X_val, y_val):
-    """Train with best params and return (model, loss_history).
+    """Train with best params and return (model, history).
 
-    loss_history = {"train": [logloss per round], "val": [logloss per round]}
+    history = {
+        "train": {"logloss": [...], "error": [...], "auc": [...]},
+        "val":   {"logloss": [...], "error": [...], "auc": [...]},
+    }
     """
     # Fixed params are not returned by study.best_params, so re-inject them here
     model = xgb.XGBClassifier(
         **params,
         objective="binary:logistic",
         enable_categorical=True,
-        eval_metric="logloss",
+        eval_metric=EVAL_METRICS,  # multi-metric tracking; last (auc) triggers early stopping
         seed=RANDOM_STATE,
         n_jobs=-1,
         early_stopping_rounds=EARLY_STOPPING,
@@ -88,9 +96,9 @@ def train_final(params: dict, X_train, y_train, X_val, y_val):
         eval_set=[(X_train, y_train), (X_val, y_val)],
         verbose=False,
     )
-    res = model.evals_result()
+    res = model.evals_result()  # {validation_0: {metric: [...]}, validation_1: {metric: [...]}}
     history = {
-        "train": res["validation_0"]["logloss"],
-        "val":   res["validation_1"]["logloss"],
+        "train": {m: list(res["validation_0"][m]) for m in EVAL_METRICS},
+        "val":   {m: list(res["validation_1"][m]) for m in EVAL_METRICS},
     }
     return model, history

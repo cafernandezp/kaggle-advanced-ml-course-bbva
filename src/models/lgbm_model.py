@@ -11,6 +11,11 @@ RANDOM_STATE = 42
 OVERFIT_PENALTY = 0.5
 EARLY_STOPPING = 50
 
+# NOTE: LightGBM uses the FIRST metric in the list for early stopping.
+# "binary_logloss" is first because it's the most stable metric to stop on;
+# "auc" and "binary_error" are tracked for monitoring only.
+EVAL_METRICS = ["binary_logloss", "auc", "binary_error"]
+
 
 def get_lgbm_params(trial: optuna.Trial) -> dict:
     """Return Optuna-suggested LightGBM hyperparameters merged with fixed params."""
@@ -26,7 +31,7 @@ def get_lgbm_params(trial: optuna.Trial) -> dict:
         "reg_lambda":        trial.suggest_float(  "reg_lambda",        1e-8, 10.0, log=True),
         # fixed
         "objective": "binary",
-        "metric": "binary_logloss",
+        "metric": EVAL_METRICS,   # first metric (binary_logloss) triggers early stopping
         "verbose": -1,
         "random_state": RANDOM_STATE,
     }
@@ -76,16 +81,19 @@ def cv_objective(trial, X, y, n_splits=5) -> float:
 
 
 def train_final(params: dict, X_train, y_train, X_val, y_val):
-    """Train with best params and return (model, loss_history).
+    """Train with best params and return (model, history).
 
-    loss_history = {"train": [logloss per round], "val": [logloss per round]}
+    history = {
+        "train": {"binary_logloss": [...], "auc": [...], "binary_error": [...]},
+        "val":   {"binary_logloss": [...], "auc": [...], "binary_error": [...]},
+    }
     """
     evals_result: dict = {}
     # Merge trial params with fixed params (best_params only has trial-suggested ones)
     final_params = {
         **params,
         "objective": "binary",
-        "metric": "binary_logloss",
+        "metric": EVAL_METRICS,  # multi-metric; first (binary_logloss) triggers early stopping
         "verbose": -1,
         "random_state": RANDOM_STATE,
     }
@@ -101,7 +109,7 @@ def train_final(params: dict, X_train, y_train, X_val, y_val):
         ],
     )
     history = {
-        "train": evals_result["train"]["binary_logloss"],
-        "val":   evals_result["val"]["binary_logloss"],
+        "train": {m: list(evals_result["train"][m]) for m in EVAL_METRICS},
+        "val":   {m: list(evals_result["val"][m])   for m in EVAL_METRICS},
     }
     return model, history
