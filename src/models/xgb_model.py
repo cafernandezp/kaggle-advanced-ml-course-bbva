@@ -24,6 +24,7 @@ def get_xgb_params(trial: optuna.Trial) -> dict:
         "reg_alpha":        trial.suggest_float(  "reg_alpha",       1e-8, 10.0, log=True),
         "reg_lambda":       trial.suggest_float(  "reg_lambda",      1e-8, 10.0, log=True),
         # fixed
+        "objective": "binary:logistic",
         "eval_metric": "logloss",
         "enable_categorical": True,   # required for pandas category dtype
         "seed": RANDOM_STATE,
@@ -71,9 +72,10 @@ def train_final(params: dict, X_train, y_train, X_val, y_val):
 
     loss_history = {"train": [logloss per round], "val": [logloss per round]}
     """
-    # enable_categorical is a fixed param not returned by study.best_params
+    # Fixed params are not returned by study.best_params, so re-inject them here
     model = xgb.XGBClassifier(
         **params,
+        objective="binary:logistic",
         enable_categorical=True,
         eval_metric="logloss",
         seed=RANDOM_STATE,
