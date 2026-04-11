@@ -24,3 +24,6 @@ dependencies = [
 dev = [
     "pylint>=4.0.5",
 ]
+
+[tool.ruff]
+extend-exclude = ["playground/"]
