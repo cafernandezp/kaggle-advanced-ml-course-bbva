@@ -1,0 +1,41 @@
+{
+  "experiment": "banking-marketing-classification",
+  "run_name": "lgbm_optuna",
+  "timestamp": "20260411_064853",
+  "params": {
+    "n_estimators": 150,
+    "learning_rate": 0.022212180929643582,
+    "num_leaves": 20,
+    "min_child_samples": 10,
+    "feature_fraction": 0.8637415832189181,
+    "bagging_fraction": 0.5267963690011828,
+    "bagging_freq": 4,
+    "reg_alpha": 1.347551223319092e-08,
+    "reg_lambda": 0.005082962821793873,
+    "model": "LightGBM",
+    "n_trials": 30
+  },
+  "metrics": {
+    "val_auc": 0.9499,
+    "train_auc": 0.9571,
+    "val_accuracy": 0.89,
+    "train_accuracy": 0.8975,
+    "val_precision": 0.5065,
+    "train_precision": 0.5265,
+    "val_recall": 0.8808,
+    "train_recall": 0.882,
+    "val_ks": 0.7916,
+    "train_ks": 0.8001,
+    "val_gini": 0.8999,
+    "train_gini": 0.9142,
+    "val_brier": 0.0554,
+    "train_brier": 0.0516,
+    "val_ece": 0.0185,
+    "train_ece": 0.0179,
+    "threshold": 0.2,
+    "youden_index": 0.772,
+    "best_youden": 0.7912,
+    "overfit_gap_auc": 0.0072,
+    "best_iteration": 150
+  }
+}

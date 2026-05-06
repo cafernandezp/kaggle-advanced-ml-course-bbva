@@ -1,0 +1,42 @@
+{
+  "tree_features": [
+    "duration",
+    "euribor3m",
+    "was_contacted",
+    "month",
+    "contact",
+    "cons.price.idx",
+    "campaign",
+    "age",
+    "cons.conf.idx",
+    "default",
+    "education",
+    "previous",
+    "pdays"
+  ],
+  "scaled_features": [
+    "duration",
+    "euribor3m",
+    "was_contacted",
+    "month_aug",
+    "month_dec",
+    "month_jul",
+    "month_jun",
+    "month_mar",
+    "month_may",
+    "month_nov",
+    "month_oct",
+    "month_sep",
+    "contact_telephone",
+    "cons.price.idx",
+    "campaign",
+    "age",
+    "cons.conf.idx",
+    "default_unknown",
+    "default_yes",
+    "education",
+    "previous",
+    "pdays"
+  ],
+  "data_variant": "tree"
+}

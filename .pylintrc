@@ -1,0 +1,23 @@
+[MAIN]
+recursive=yes
+
+[BASIC]
+# Allow uppercase-starting names (X, X_train, X_val, X_t …) — standard ML convention
+variable-rgx = [a-z_][a-z0-9_]{0,30}$|[A-Z][a-zA-Z0-9_]{0,30}$
+argument-rgx = [a-z_][a-z0-9_]{0,30}$|[A-Z][a-zA-Z0-9_]{0,30}$
+# Allow short names like 'ax', 'x', 'y', 'n'
+good-names = i,j,k,n,x,y,ax,lr,f
+
+[DESIGN]
+# ML training functions legitimately have many args and local variables
+max-args = 10
+max-positional-arguments = 8
+max-locals = 25
+
+[FORMAT]
+max-line-length = 110
+
+[MESSAGES CONTROL]
+# C0114: module docstring — scripts have module-level docstrings already
+# R0401: cyclic imports false positives in ML pipelines
+disable = C0114

@@ -1,0 +1,104 @@
+"""
+XGBoost model: Optuna objective (single-split + CV) + final training with loss history.
+"""
+import numpy as np
+import optuna
+import xgboost as xgb
+from sklearn.metrics import roc_auc_score
+from sklearn.model_selection import StratifiedKFold
+
+RANDOM_STATE = 42
+OVERFIT_PENALTY = 0.5
+EARLY_STOPPING = 50
+
+# NOTE: XGBoost uses the LAST metric in the list for early stopping.
+# "auc" is last because AUC is our primary optimization metric;
+# "logloss" and "error" are tracked for monitoring only.
+EVAL_METRICS = ["logloss", "error", "auc"]
+
+
+def get_xgb_params(trial: optuna.Trial) -> dict:
+    """Return Optuna-suggested XGBoost hyperparameters merged with fixed params."""
+    return {
+        "n_estimators":     trial.suggest_int(   "n_estimators",    100,  2000, step=50),
+        "max_depth":        trial.suggest_int(   "max_depth",          3,    10, step=1),
+        "eta":              trial.suggest_float(  "eta",             1e-3,  0.3, log=True),
+        "subsample":        trial.suggest_float(  "subsample",        0.4,  1.0, log=False),
+        "colsample_bytree": trial.suggest_float(  "colsample_bytree", 0.3,  1.0, log=False),
+        "min_child_weight": trial.suggest_int(   "min_child_weight",    1,   50, step=1),
+        "reg_alpha":        trial.suggest_float(  "reg_alpha",       1e-8, 10.0, log=True),
+        "reg_lambda":       trial.suggest_float(  "reg_lambda",      1e-8, 10.0, log=True),
+        # fixed
+        "objective": "binary:logistic",
+        "eval_metric": EVAL_METRICS,   # multiple metrics; last one (auc) triggers early stopping
+        "enable_categorical": True,   # required for pandas category dtype
+        "seed": RANDOM_STATE,
+        "n_jobs": -1,
+    }
+
+
+def objective(trial, X_train, y_train, X_val, y_val) -> float:
+    """Optuna objective: combined val_auc − penalty * overfit_gap."""
+    params = get_xgb_params(trial)
+    model = xgb.XGBClassifier(**params, early_stopping_rounds=EARLY_STOPPING, verbosity=0)
+    model.fit(
+        X_train, y_train,
+        eval_set=[(X_val, y_val)],
+        verbose=False,
+    )
+    train_auc = roc_auc_score(y_train, model.predict_proba(X_train)[:, 1])
+    val_auc   = roc_auc_score(y_val,   model.predict_proba(X_val)[:, 1])
+    overfit_gap = max(0.0, train_auc - val_auc)
+    return val_auc - OVERFIT_PENALTY * overfit_gap
+
+
+def cv_objective(trial, X, y, n_splits=5) -> float:
+    """Optuna objective with Stratified K-Fold CV."""
+    params = get_xgb_params(trial)
+    skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=RANDOM_STATE)
+
+    val_aucs, train_aucs = [], []
+    for train_idx, val_idx in skf.split(X, y):
+        X_tr, X_vl = X.iloc[train_idx], X.iloc[val_idx]
+        y_tr, y_vl = y.iloc[train_idx], y.iloc[val_idx]
+
+        model = xgb.XGBClassifier(**params, early_stopping_rounds=EARLY_STOPPING, verbosity=0)
+        model.fit(X_tr, y_tr, eval_set=[(X_vl, y_vl)], verbose=False)
+        train_aucs.append(roc_auc_score(y_tr, model.predict_proba(X_tr)[:, 1]))
+        val_aucs.append(roc_auc_score(y_vl, model.predict_proba(X_vl)[:, 1]))
+
+    mean_val = np.mean(val_aucs)
+    mean_gap = np.mean([t - v for t, v in zip(train_aucs, val_aucs)])
+    return mean_val - OVERFIT_PENALTY * max(0.0, mean_gap)
+
+
+def train_final(params: dict, X_train, y_train, X_val, y_val):
+    """Train with best params and return (model, history).
+
+    history = {
+        "train": {"logloss": [...], "error": [...], "auc": [...]},
+        "val":   {"logloss": [...], "error": [...], "auc": [...]},
+    }
+    """
+    # Fixed params are not returned by study.best_params, so re-inject them here
+    model = xgb.XGBClassifier(
+        **params,
+        objective="binary:logistic",
+        enable_categorical=True,
+        eval_metric=EVAL_METRICS,  # multi-metric tracking; last (auc) triggers early stopping
+        seed=RANDOM_STATE,
+        n_jobs=-1,
+        early_stopping_rounds=EARLY_STOPPING,
+        verbosity=0,
+    )
+    model.fit(
+        X_train, y_train,
+        eval_set=[(X_train, y_train), (X_val, y_val)],
+        verbose=False,
+    )
+    res = model.evals_result()  # {validation_0: {metric: [...]}, validation_1: {metric: [...]}}
+    history = {
+        "train": {m: list(res["validation_0"][m]) for m in EVAL_METRICS},
+        "val":   {m: list(res["validation_1"][m]) for m in EVAL_METRICS},
+    }
+    return model, history

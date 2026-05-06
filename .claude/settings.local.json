@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv pip:*)",
+      "Bash(cat .venv/lib/python3.12/site-packages/mlflow-*.dist-info/METADATA)",
+      "Bash(uv add:*)",
+      "Bash(uv sync:*)",
+      "Bash(.venv/bin/python:*)",
+      "Bash(uv run:*)"
+    ]
+  }
+}

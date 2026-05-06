@@ -1,0 +1,2 @@
+model,threshold,val_roc_auc,val_gini,val_ks_statistic,val_pr_auc,val_accuracy,val_precision,val_recall,val_f1,val_n_samples,val_n_positive,val_positive_rate,train_roc_auc,train_gini,train_ks_statistic,train_pr_auc,train_accuracy,train_precision,train_recall,train_f1,train_n_samples,train_n_positive,train_positive_rate,test_n_samples,test_n_positive,test_positive_rate
+lgbm,0.2,0.9499,0.8999,0.7916,0.6661,0.89,0.5065,0.8808,0.6432,5519,1080,0.1957,0.9571,0.9142,0.8001,0.7255,0.8975,0.5265,0.882,0.6593,22076,4158,0.1883,13593,2605,0.1916

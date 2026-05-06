@@ -1,0 +1,560 @@
+{
+  "target_col": "subscribed",
+  "id_col": "Id",
+  "random_state": 42,
+  "val_size": 0.2,
+  "columns": {
+    "duration": {
+      "transformation": "passthrough",
+      "rationale": "LEAKY feature \u2014 call duration is only known after the call ends. Kept because the competition test set includes it.",
+      "dtype_before": "int64",
+      "n_missing": 0,
+      "min": 0.0,
+      "max": 4918.0
+    },
+    "pdays": {
+      "transformation": "sentinel_to_nan",
+      "rationale": "pdays=999 means 'never contacted'. Split into NaN + binary flag.",
+      "dtype_after": "float64",
+      "n_sentinel_replaced": 26598,
+      "n_missing_after": 26598,
+      "median_imputed_value": 6.0,
+      "n_imputed_train": 21297
+    },
+    "was_contacted": {
+      "transformation": "derived_binary_flag",
+      "rationale": "Derived from pdays sentinel (999 \u2192 0, else 1).",
+      "dtype_after": "int8",
+      "positive_rate": 0.03612973364739989
+    },
+    "education": {
+      "transformation": "ordinal_encode",
+      "rationale": "education has a natural order; encoded as int 0..6. 'unknown' \u2192 NaN (imputed later for numeric/scaled variants).",
+      "ordering": {
+        "illiterate": 0,
+        "basic.4y": 1,
+        "basic.6y": 2,
+        "basic.9y": 3,
+        "high.school": 4,
+        "professional.course": 5,
+        "university.degree": 6,
+        "unknown": null
+      },
+      "value_counts_before": {
+        "university.degree": 8158,
+        "high.school": 6429,
+        "basic.9y": 3983,
+        "professional.course": 3484,
+        "basic.4y": 2805,
+        "basic.6y": 1553,
+        "unknown": 1174,
+        "illiterate": 9
+      },
+      "n_unknown_to_nan": 1174,
+      "dtype_after": "float64",
+      "median_imputed_value": 4.0,
+      "n_imputed_train": 954
+    },
+    "job": {
+      "transformation": "category_cast",
+      "rationale": "Unordered categorical; kept as pandas Categorical so LightGBM/XGBoost can use it natively, and one-hot encoded for numeric/scaled variants.",
+      "n_unique": 12,
+      "n_missing": 0,
+      "categories": [
+        "admin",
+        "blue-collar",
+        "entrepreneur",
+        "housemaid",
+        "management",
+        "retired",
+        "self-employed",
+        "services",
+        "student",
+        "technician",
+        "unemployed",
+        "unknown"
+      ],
+      "dtype_after": "category",
+      "one_hot_columns": [
+        "job_blue-collar",
+        "job_entrepreneur",
+        "job_housemaid",
+        "job_management",
+        "job_retired",
+        "job_self-employed",
+        "job_services",
+        "job_student",
+        "job_technician",
+        "job_unemployed",
+        "job_unknown"
+      ],
+      "n_one_hot_columns": 11
+    },
+    "marital": {
+      "transformation": "category_cast",
+      "rationale": "Unordered categorical; kept as pandas Categorical so LightGBM/XGBoost can use it natively, and one-hot encoded for numeric/scaled variants.",
+      "n_unique": 4,
+      "n_missing": 0,
+      "categories": [
+        "divorced",
+        "married",
+        "single",
+        "unknown"
+      ],
+      "dtype_after": "category",
+      "one_hot_columns": [
+        "marital_married",
+        "marital_single",
+        "marital_unknown"
+      ],
+      "n_one_hot_columns": 3
+    },
+    "default": {
+      "transformation": "category_cast",
+      "rationale": "Unordered categorical; kept as pandas Categorical so LightGBM/XGBoost can use it natively, and one-hot encoded for numeric/scaled variants.",
+      "n_unique": 3,
+      "n_missing": 0,
+      "categories": [
+        "no",
+        "unknown",
+        "yes"
+      ],
+      "dtype_after": "category",
+      "one_hot_columns": [
+        "default_unknown",
+        "default_yes"
+      ],
+      "n_one_hot_columns": 2
+    },
+    "housing": {
+      "transformation": "category_cast",
+      "rationale": "Unordered categorical; kept as pandas Categorical so LightGBM/XGBoost can use it natively, and one-hot encoded for numeric/scaled variants.",
+      "n_unique": 3,
+      "n_missing": 0,
+      "categories": [
+        "no",
+        "unknown",
+        "yes"
+      ],
+      "dtype_after": "category",
+      "one_hot_columns": [
+        "housing_unknown",
+        "housing_yes"
+      ],
+      "n_one_hot_columns": 2
+    },
+    "loan": {
+      "transformation": "category_cast",
+      "rationale": "Unordered categorical; kept as pandas Categorical so LightGBM/XGBoost can use it natively, and one-hot encoded for numeric/scaled variants.",
+      "n_unique": 3,
+      "n_missing": 0,
+      "categories": [
+        "no",
+        "unknown",
+        "yes"
+      ],
+      "dtype_after": "category",
+      "one_hot_columns": [
+        "loan_unknown",
+        "loan_yes"
+      ],
+      "n_one_hot_columns": 2
+    },
+    "contact": {
+      "transformation": "category_cast",
+      "rationale": "Unordered categorical; kept as pandas Categorical so LightGBM/XGBoost can use it natively, and one-hot encoded for numeric/scaled variants.",
+      "n_unique": 2,
+      "n_missing": 0,
+      "categories": [
+        "cellular",
+        "telephone"
+      ],
+      "dtype_after": "category",
+      "one_hot_columns": [
+        "contact_telephone"
+      ],
+      "n_one_hot_columns": 1
+    },
+    "month": {
+      "transformation": "category_cast",
+      "rationale": "Unordered categorical; kept as pandas Categorical so LightGBM/XGBoost can use it natively, and one-hot encoded for numeric/scaled variants.",
+      "n_unique": 10,
+      "n_missing": 0,
+      "categories": [
+        "apr",
+        "aug",
+        "dec",
+        "jul",
+        "jun",
+        "mar",
+        "may",
+        "nov",
+        "oct",
+        "sep"
+      ],
+      "dtype_after": "category",
+      "one_hot_columns": [
+        "month_aug",
+        "month_dec",
+        "month_jul",
+        "month_jun",
+        "month_mar",
+        "month_may",
+        "month_nov",
+        "month_oct",
+        "month_sep"
+      ],
+      "n_one_hot_columns": 9
+    },
+    "day_of_week": {
+      "transformation": "category_cast",
+      "rationale": "Unordered categorical; kept as pandas Categorical so LightGBM/XGBoost can use it natively, and one-hot encoded for numeric/scaled variants.",
+      "n_unique": 5,
+      "n_missing": 0,
+      "categories": [
+        "fri",
+        "mon",
+        "thu",
+        "tue",
+        "wed"
+      ],
+      "dtype_after": "category",
+      "one_hot_columns": [
+        "day_of_week_mon",
+        "day_of_week_thu",
+        "day_of_week_tue",
+        "day_of_week_wed"
+      ],
+      "n_one_hot_columns": 4
+    },
+    "poutcome": {
+      "transformation": "category_cast",
+      "rationale": "Unordered categorical; kept as pandas Categorical so LightGBM/XGBoost can use it natively, and one-hot encoded for numeric/scaled variants.",
+      "n_unique": 3,
+      "n_missing": 0,
+      "categories": [
+        "failure",
+        "nonexistent",
+        "success"
+      ],
+      "dtype_after": "category",
+      "one_hot_columns": [
+        "poutcome_nonexistent",
+        "poutcome_success"
+      ],
+      "n_one_hot_columns": 2
+    },
+    "age": {
+      "transformation": "passthrough",
+      "rationale": "Numeric feature used as-is in the tree variant.",
+      "dtype_before": "int64",
+      "n_missing": 0,
+      "min": 17.0,
+      "max": 98.0
+    },
+    "campaign": {
+      "transformation": "passthrough",
+      "rationale": "Numeric feature used as-is in the tree variant.",
+      "dtype_before": "int64",
+      "n_missing": 0,
+      "min": 1.0,
+      "max": 43.0
+    },
+    "previous": {
+      "transformation": "passthrough",
+      "rationale": "Numeric feature used as-is in the tree variant.",
+      "dtype_before": "int64",
+      "n_missing": 0,
+      "min": 0.0,
+      "max": 7.0
+    },
+    "emp.var.rate": {
+      "transformation": "passthrough",
+      "rationale": "Numeric feature used as-is in the tree variant.",
+      "dtype_before": "float64",
+      "n_missing": 0,
+      "min": -3.4,
+      "max": 1.4
+    },
+    "cons.price.idx": {
+      "transformation": "passthrough",
+      "rationale": "Numeric feature used as-is in the tree variant.",
+      "dtype_before": "float64",
+      "n_missing": 0,
+      "min": 92.201,
+      "max": 94.767
+    },
+    "cons.conf.idx": {
+      "transformation": "passthrough",
+      "rationale": "Numeric feature used as-is in the tree variant.",
+      "dtype_before": "float64",
+      "n_missing": 0,
+      "min": -50.8,
+      "max": -26.9
+    },
+    "euribor3m": {
+      "transformation": "passthrough",
+      "rationale": "Numeric feature used as-is in the tree variant.",
+      "dtype_before": "float64",
+      "n_missing": 0,
+      "min": 0.634,
+      "max": 5.045
+    },
+    "nr.employed": {
+      "transformation": "passthrough",
+      "rationale": "Numeric feature used as-is in the tree variant.",
+      "dtype_before": "float64",
+      "n_missing": 0,
+      "min": 4963.6,
+      "max": 5228.1
+    }
+  },
+  "stages": {
+    "1_read": {
+      "train_shape": [
+        27595,
+        21
+      ],
+      "test_shape": [
+        13593,
+        20
+      ],
+      "train_positive_rate": 0.11244790722957057,
+      "columns": [
+        "job",
+        "marital",
+        "education",
+        "default",
+        "housing",
+        "loan",
+        "contact",
+        "month",
+        "day_of_week",
+        "poutcome",
+        "duration",
+        "campaign",
+        "pdays",
+        "previous",
+        "emp.var.rate",
+        "cons.price.idx",
+        "cons.conf.idx",
+        "euribor3m",
+        "nr.employed",
+        "age",
+        "subscribed"
+      ]
+    },
+    "2_tree": {
+      "n_features": 21,
+      "features": [
+        "job",
+        "marital",
+        "education",
+        "default",
+        "housing",
+        "loan",
+        "contact",
+        "month",
+        "day_of_week",
+        "poutcome",
+        "duration",
+        "campaign",
+        "pdays",
+        "previous",
+        "emp.var.rate",
+        "cons.price.idx",
+        "cons.conf.idx",
+        "euribor3m",
+        "nr.employed",
+        "age",
+        "was_contacted"
+      ]
+    },
+    "3_split": {
+      "train_shape": [
+        22076,
+        21
+      ],
+      "val_shape": [
+        5519,
+        21
+      ],
+      "train_positive_rate": 0.11242978800507339,
+      "val_positive_rate": 0.11252038412755934
+    },
+    "4_numeric": {
+      "n_features_tree": 21,
+      "n_features_numeric": 48,
+      "one_hot_expansion": {
+        "job": 11,
+        "marital": 3,
+        "default": 2,
+        "housing": 2,
+        "loan": 2,
+        "contact": 1,
+        "month": 9,
+        "day_of_week": 4,
+        "poutcome": 2
+      },
+      "nan_counts_train": {
+        "education": 954,
+        "pdays": 21297
+      },
+      "median_imputer": {
+        "education": 4.0,
+        "duration": 179.0,
+        "campaign": 2.0,
+        "pdays": 6.0,
+        "previous": 0.0,
+        "emp.var.rate": 1.100000023841858,
+        "cons.price.idx": 93.7979965209961,
+        "cons.conf.idx": -41.79999923706055,
+        "euribor3m": 4.85699987411499,
+        "nr.employed": 5191.0,
+        "age": 38.0,
+        "was_contacted": 0.0,
+        "job_blue-collar": 0.0,
+        "job_entrepreneur": 0.0,
+        "job_housemaid": 0.0,
+        "job_management": 0.0,
+        "job_retired": 0.0,
+        "job_self-employed": 0.0,
+        "job_services": 0.0,
+        "job_student": 0.0,
+        "job_technician": 0.0,
+        "job_unemployed": 0.0,
+        "job_unknown": 0.0,
+        "marital_married": 1.0,
+        "marital_single": 0.0,
+        "marital_unknown": 0.0,
+        "default_unknown": 0.0,
+        "default_yes": 0.0,
+        "housing_unknown": 0.0,
+        "housing_yes": 1.0,
+        "loan_unknown": 0.0,
+        "loan_yes": 0.0,
+        "contact_telephone": 0.0,
+        "month_aug": 0.0,
+        "month_dec": 0.0,
+        "month_jul": 0.0,
+        "month_jun": 0.0,
+        "month_mar": 0.0,
+        "month_may": 0.0,
+        "month_nov": 0.0,
+        "month_oct": 0.0,
+        "month_sep": 0.0,
+        "day_of_week_mon": 0.0,
+        "day_of_week_thu": 0.0,
+        "day_of_week_tue": 0.0,
+        "day_of_week_wed": 0.0,
+        "poutcome_nonexistent": 1.0,
+        "poutcome_success": 0.0
+      }
+    },
+    "5_scaled": {
+      "n_features": 48,
+      "train_max_abs_mean": 5.992475507810013e-06,
+      "train_max_std_deviation_from_1": 2.2649765014648438e-05,
+      "scaler_mean": {
+        "education": 4.150117774959232,
+        "duration": 257.73428157274867,
+        "campaign": 2.5871081717702484,
+        "pdays": 5.9991846348976265,
+        "previous": 0.17000362384489945,
+        "emp.var.rate": 0.0937941634312372,
+        "cons.price.idx": 93.57917439563916,
+        "cons.conf.idx": -40.51768898518972,
+        "euribor3m": 3.6324541826306707,
+        "nr.employed": 5167.4997387841295,
+        "age": 39.95221054538866,
+        "was_contacted": 0.035287189708280486,
+        "job_blue-collar": 0.22594672947997826,
+        "job_entrepreneur": 0.03406414205472006,
+        "job_housemaid": 0.02609168327595579,
+        "job_management": 0.07034788911034608,
+        "job_retired": 0.04135712991483965,
+        "job_self-employed": 0.03510599746330857,
+        "job_services": 0.09856858126472187,
+        "job_student": 0.02255843449900344,
+        "job_technician": 0.1611252038412756,
+        "job_unemployed": 0.023283203478891103,
+        "job_unknown": 0.007655372350063417,
+        "marital_married": 0.6028718970828049,
+        "marital_single": 0.2855589780757384,
+        "marital_unknown": 0.0019478166334480885,
+        "default_unknown": 0.20818988947273057,
+        "default_yes": 9.05961224859576e-05,
+        "housing_unknown": 0.025412212357311108,
+        "housing_yes": 0.5246421453161805,
+        "loan_unknown": 0.025412212357311108,
+        "loan_yes": 0.15179380322522196,
+        "contact_telephone": 0.36419641239354955,
+        "month_aug": 0.1510690342453343,
+        "month_dec": 0.004756296430512774,
+        "month_jul": 0.17779489037869178,
+        "month_jun": 0.1294618590324334,
+        "month_mar": 0.013770610617865555,
+        "month_may": 0.32922630911396994,
+        "month_nov": 0.09775321616234825,
+        "month_oct": 0.018028628374705563,
+        "month_sep": 0.014087697046566407,
+        "day_of_week_mon": 0.20375067947091866,
+        "day_of_week_thu": 0.21077187896358035,
+        "day_of_week_tue": 0.19319623120130458,
+        "day_of_week_wed": 0.20103279579633992,
+        "poutcome_nonexistent": 0.86541946004711,
+        "poutcome_success": 0.03188983511505707
+      },
+      "scaler_scale": {
+        "education": 1.605228333878361,
+        "duration": 258.88015394138614,
+        "campaign": 2.7802389662154603,
+        "pdays": 0.7189229541210503,
+        "previous": 0.4895620215960622,
+        "emp.var.rate": 1.5678163430038576,
+        "cons.price.idx": 0.5780989793333339,
+        "cons.conf.idx": 4.621277249259491,
+        "euribor3m": 1.7317721971541156,
+        "nr.employed": 72.30307710740242,
+        "age": 10.457548811661269,
+        "was_contacted": 0.1845047531928983,
+        "job_blue-collar": 0.41820426219406204,
+        "job_entrepreneur": 0.18139398082846056,
+        "job_housemaid": 0.15940799020056365,
+        "job_management": 0.255732406253225,
+        "job_retired": 0.1991148355096795,
+        "job_self-employed": 0.18404772860705113,
+        "job_services": 0.2980818948748511,
+        "job_student": 0.1484909139710495,
+        "job_technician": 0.3676463960497681,
+        "job_unemployed": 0.1508015116457778,
+        "job_unknown": 0.08715943795278455,
+        "marital_married": 0.4893029458225086,
+        "marital_single": 0.4516802498627523,
+        "marital_unknown": 0.04409107215537576,
+        "default_unknown": 0.40601337341775184,
+        "default_yes": 0.009517768374390508,
+        "housing_unknown": 0.1573735423138783,
+        "housing_yes": 0.49939239549097686,
+        "loan_unknown": 0.1573735423138783,
+        "loan_yes": 0.358820908710243,
+        "contact_telephone": 0.48120409972611117,
+        "month_aug": 0.35811615592921286,
+        "month_dec": 0.06880170110380895,
+        "month_jul": 0.3823399891901457,
+        "month_jun": 0.3357104199876729,
+        "month_mar": 0.11653746565408345,
+        "month_may": 0.46993227863295645,
+        "month_nov": 0.2969806810084883,
+        "month_oct": 0.13305486437418335,
+        "month_sep": 0.11785259368588615,
+        "day_of_week_mon": 0.4027857247793889,
+        "day_of_week_thu": 0.4078567076826642,
+        "day_of_week_tue": 0.3948055818386015,
+        "day_of_week_wed": 0.40077251753413307,
+        "poutcome_nonexistent": 0.3412749891493348,
+        "poutcome_success": 0.17570678282693455
+      }
+    }
+  }
+}
