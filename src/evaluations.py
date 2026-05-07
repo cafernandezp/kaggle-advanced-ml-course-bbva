@@ -325,6 +325,20 @@ def write_run_report_md(runs_dir: Path = RUNS_DIR) -> Path | None:
     val_auc_col = next((c for c in summary.columns if c == "val_roc_auc"), None)
     val_acc_col = next((c for c in summary.columns if c == "val_accuracy"), None)
 
+    # Reorder columns: model, threshold, then val_X / train_X interleaved per metric, test_* last
+    leading = [c for c in ("model", "threshold") if c in summary.columns]
+    val_cols = [c for c in summary.columns if c.startswith("val_")]
+    interleaved: list[str] = []
+    for vc in val_cols:
+        interleaved.append(vc)
+        tc = "train_" + vc[len("val_"):]
+        if tc in summary.columns:
+            interleaved.append(tc)
+    test_cols = [c for c in summary.columns if c.startswith("test_")]
+    used = set(leading) | set(interleaved) | set(test_cols)
+    extras = [c for c in summary.columns if c not in used]
+    summary = summary[leading + interleaved + test_cols + extras]
+
     lines: list[str] = []
     lines.append(f"# Run Report — {datetime.now():%Y-%m-%d %H:%M}")
     lines.append("")
@@ -340,6 +354,16 @@ def write_run_report_md(runs_dir: Path = RUNS_DIR) -> Path | None:
         if val_acc_col and val_acc_col in best:
             lines.append(f"- **Val accuracy**: {best[val_acc_col]:.4f}")
         lines.append("")
+
+        candidates = sorted(runs_dir.glob(f"*_{best['model']}_optuna"))
+        if candidates:
+            best_run_dir = candidates[-1]
+            thr_plot = best_run_dir / "threshold_selection.png"
+            if thr_plot.exists():
+                lines.append(f"### Threshold selection — Youden Index")
+                lines.append("")
+                lines.append(f"![Threshold selection]({best_run_dir.name}/{thr_plot.name})")
+                lines.append("")
 
     lines.append("## Cross-model summary")
     lines.append("")
