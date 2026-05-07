@@ -60,7 +60,7 @@ Ambos sistemas corren en paralelo: MLflow para la UI y el registro de modelos, e
 
 | Herramienta | Version | Proposito |
 |---|---|---|
-| pylint | >= 4.0.5 | Linting estatico (score actual: 10.00/10) |
+| ruff | >= 0.7.0 | Lint + format (`ruff check .`, `ruff format .`, `make lint`) |
 
 ---
 
@@ -81,14 +81,18 @@ src/
   evaluations.py     -- Metricas por split (train / val / test)
   metrics.py         -- Threshold sweep, Youden, KS, Gini
   plots.py           -- Graficos de comparacion
-  tracking.py        -- Tracker custom (JSON + CSV + pkl)
-  preprocessing.py   -- Feature engineering + splits
+  tracking.py        -- Tracker custom (JSON + CSV + pkl); pkl/parquet gitignored en repo publico
+  preprocessing.py   -- Feature engineering + splits (categorica para arboles, escalada para SVM/GP/MLP)
+  feature_selection.py -- Filtro 4 etapas: missing -> correlacion -> MI -> PFI
+  predict.py         -- Scoring de CSVs nuevos reusando run + preprocessing
   eda.py             -- Analisis exploratorio reutilizable
+  config.py          -- Single source of truth (experiment, id_col, target_col, top_n_features)
   models/
     lgbm_model.py    -- LightGBM: objetivo Optuna + train_final
     xgb_model.py     -- XGBoost: objetivo Optuna + train_final
     mlp_model.py     -- MLP PyTorch: objetivo Optuna + train_final + early stopping
     gp_model.py      -- Gaussian Process: seleccion de kernels via Optuna
+    svm_model.py     -- SVC: kernel + C + gamma via Optuna, requiere datos escalados
 ```
 
 ---

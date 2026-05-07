@@ -27,7 +27,7 @@ help:
 	@echo "  make pipeline-report             — Cross-run comparison (no training)"
 	@echo ""
 	@echo "  make init                        — Create project folder structure"
-	@echo "  make lint                        — Run pylint on src/"
+	@echo "  make lint                        — Run ruff check + format on src/"
 	@echo "  make eval-summary                — Merge all evaluation_results.csv into one summary"
 	@echo "  make predict RUN=<run> INPUT=<csv> OUTPUT=<csv>"
 	@echo "                                    Score a new CSV using a trained run"
@@ -65,7 +65,8 @@ init:
 	@echo "✓ Done"
 
 lint:
-	uv run pylint $(SRC_DIR) --recursive=y
+	uv run ruff check $(SRC_DIR)
+	uv run ruff format --check $(SRC_DIR)
 
 eval-summary:
 	uv run python -c "from src.evaluations import merge_evaluation_summary; merge_evaluation_summary()"

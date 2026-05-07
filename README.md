@@ -197,7 +197,7 @@ Running a subset of models does **not** overwrite previous runs. Each run gets i
 | **Output (plots)** | `reports/figures/` — `roc_curves.png`, `loss_curves.png`, `feature_importance_pct.png`, `permutation_importance.png` |
 | **Output (log)** | `reports/runs/pipeline_<ts>.log` — full pipeline log with timestamps |
 | **Output (submission)** | `data/processed/submission.csv` — best model by val AUC |
-| **Duration** | ~5–8 min (30 Optuna trials × 3 models) |
+| **Duration** | ~10–20 min (30 Optuna trials × 5 models). Use `MODELS='lgbm xgb svm gp'` to skip the slow MLP and cut runtime ~40%. |
 
 #### Architecture
 
@@ -479,8 +479,8 @@ Uses `sklearn.svm.SVC` with `probability=True` and training-set subsampling (SVM
 
 | File | Description |
 |---|---|
-| `roc_curves.png` | ROC-AUC curves for all 3 models on one chart |
-| `loss_curves.png` | Train vs validation logloss per model (3 subplots) |
+| `roc_curves.png` | ROC-AUC curves for all trained models on one chart |
+| `loss_curves.png` | Train vs validation logloss per tree model (one subplot each) |
 | `feature_importance_pct.png` | Top-15 features as % of total gain (LightGBM + XGBoost) |
 | `permutation_importance.png` | PFI: mean AUC drop ± std per feature (LightGBM + XGBoost) |
 
@@ -488,17 +488,19 @@ Uses `sklearn.svm.SVC` with `probability=True` and training-set subsampling (SVM
 
 ## Experiment tracking (`src/tracking.py`)
 
-Each training run is saved to `reports/runs/<timestamp>_<model_name>/`:
+Each training run is saved to `reports/runs/<ts>_<model>_optuna/`:
 
 ```
 run.json                   ← hyperparameters + full metrics (AUC, accuracy, precision, recall, KS, Gini, threshold, Youden)
 evaluation_results.csv     ← train / val / test metrics for this model (3 rows)
 threshold_sweep.csv        ← accuracy, precision, recall, F1, Youden at every threshold (0.10–0.90, step 0.01)
-model.pkl                  ← pickled trained model (for re-evaluation without retraining)
+model.pkl                  ← pickled trained model (gitignored — regenerate with `make pipeline`)
 optuna_trials.csv          ← all 30 Optuna trials with params, value, and duration
-optuna_study.pkl           ← full Optuna study object (loadable with pickle for further analysis)
+optuna_study.pkl           ← full Optuna study object (gitignored — regenerate with `make pipeline`)
 feature_importance_pct.csv ← feature importance as % of total gain (tree models only)
 ```
+
+> Heavy binaries (`*.pkl`, `*.parquet`) and the MLflow store (`reports/runs/mlruns/`) are gitignored to keep the public repo small. Run `make pipeline` to regenerate them locally.
 
 `reports/runs/evaluation_summary.csv` — all models × all splits in one file for cross-model comparison.
 
@@ -528,6 +530,7 @@ Detailed design documents are in the `docs/` folder:
 
 | Document | Description |
 |---|---|
+| [`STACK.md`](STACK.md) | Tech stack reference: library versions, compat notes (pandas<3 for MLflow, GPy on Py 3.12), dual-tracking fallback |
 | [`docs/data-flow-schema.md`](docs/data-flow-schema.md) | End-to-end data flow: Mermaid diagram + numbered stage table with inputs, outputs and files written |
 | [`docs/feature_selection.md`](docs/feature_selection.md) | Feature selection pipeline: stages, data state at each step, report format |
 | [`docs/optuna_objective.md`](docs/optuna_objective.md) | Why single objective vs multi-objective, penalty weight tuning, CV interaction |

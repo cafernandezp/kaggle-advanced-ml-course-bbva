@@ -17,14 +17,16 @@ dependencies = [
     "pandas>=2.0.0,<3",
     "scikit-learn>=1.8.0",
     "seaborn>=0.13.2",
+    "tabulate>=0.10.0",
     "torch>=2.11.0",
     "xgboost>=3.2.0",
 ]
 
 [dependency-groups]
 dev = [
-    "pylint>=4.0.5",
+    "ruff>=0.7.0",
 ]
 
 [tool.ruff]
 extend-exclude = ["playground/"]
+line-length = 110

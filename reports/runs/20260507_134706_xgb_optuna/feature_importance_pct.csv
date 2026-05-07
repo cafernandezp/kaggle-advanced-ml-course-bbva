@@ -1,0 +1,14 @@
+feature,importance_pct
+was_contacted,33.48
+duration,19.0
+pdays,13.66
+euribor3m,10.52
+month,4.2
+cons.price.idx,4.16
+contact,4.03
+cons.conf.idx,3.66
+default,2.25
+previous,2.08
+age,1.17
+education,0.95
+campaign,0.86

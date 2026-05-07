@@ -22,6 +22,7 @@ import pandas as pd
 from src.config import DEFAULT_CONFIG, PipelineConfig
 from src.evaluations import (
     build_run_metrics, evaluate_all, evaluate_model, merge_evaluation_summary,
+    write_run_report_md,
 )
 from src.feature_selection import (
     FEATURE_SELECTION_DIR_NAME,
@@ -441,6 +442,7 @@ def merge_summary_and_log():
     """Merge per-model evaluation_results.csv into evaluation_summary.csv (also generates combined ROC)."""
     merge_evaluation_summary()
     logging.getLogger(__name__).info("Evaluation summary → %s", RUNS_DIR / "evaluation_summary.csv")
+    write_run_report_md()
 
 
 def print_summary(trained: list[dict], eval_df: pd.DataFrame):
