@@ -343,7 +343,8 @@ make submit RUN=reports/runs/20260409_090116_lgbm_optuna MSG="lgbm youden t=0.12
 ### Stage 7 — Lint
 
 ```bash
-uv run pylint src --recursive=y
+ruff check .
+ruff format .
 ```
 
 ---
