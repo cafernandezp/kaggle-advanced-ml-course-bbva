@@ -13,6 +13,11 @@ mlflow.yaml
 reports/runs/**/*.pkl
 reports/runs/**/*.parquet
 reports/runs/mlruns/
+
+# Kaggle-supplied competition data — do not redistribute, keep local only
+data/raw/train_set.csv
+data/raw/test_set.csv
+data/raw/dumb_submission.csv
 reports/runs/.trash/
 
 
