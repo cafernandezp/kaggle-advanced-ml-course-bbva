@@ -14,6 +14,9 @@ reports/runs/**/*.pkl
 reports/runs/**/*.parquet
 reports/runs/mlruns/
 
+# top-level pipeline run logs embed local absolute paths — don't commit
+reports/runs/*.log
+
 # Kaggle-supplied competition data — do not redistribute, keep local only
 data/raw/train_set.csv
 data/raw/test_set.csv
